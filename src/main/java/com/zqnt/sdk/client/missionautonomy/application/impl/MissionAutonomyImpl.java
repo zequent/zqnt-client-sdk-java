@@ -656,6 +656,7 @@ public class MissionAutonomyImpl implements MissionAutonomy {
         if (proto.hasMission()) {
             var json = ProtoJsonUtils.toJson(proto.getMission());
             var missionDTO = JsonUtils.fromJson(json, MissionDTO.class);
+            applyTimestamps(proto.getMission(), missionDTO);
 
             builder.missionData(missionDTO);
         }
@@ -693,8 +694,44 @@ public class MissionAutonomyImpl implements MissionAutonomy {
         return builder.build();
     }
 
+    /**
+     * Re-reads a mission's timestamps straight off the proto instead of trusting the JSON
+     * round-trip above.
+     *
+     * <p>Outbound, a {@code LocalDateTime} is converted with {@link ProtobufHelpers#toTimestamp}
+     * which applies {@link java.time.ZoneId#systemDefault()}. Inbound, {@code ProtoJsonUtils}
+     * renders a proto {@code Timestamp} as an RFC-3339 string in UTC, and Jackson parses that into
+     * a {@code LocalDateTime} by discarding the offset rather than converting it. The offset was
+     * therefore applied on the way out and dropped on the way back, so every timestamp returned by
+     * the server came back shifted by the caller's own UTC offset -- a mission created with
+     * {@code startDate=13:56} from a UTC+2 machine came back as {@code 11:56}, and a scheduler
+     * built from it would have fired two hours early.
+     *
+     * <p>Using {@link ProtobufHelpers#toLocalDateTime} here makes the two directions symmetric.
+     */
+    private static void applyTimestamps(MissionProtoDTO proto, MissionDTO dto) {
+        if (proto.hasStartDate()) {
+            dto.setStartDate(ProtobufHelpers.toLocalDateTime(proto.getStartDate()));
+        }
+        if (proto.hasEndDate()) {
+            dto.setEndDate(ProtobufHelpers.toLocalDateTime(proto.getEndDate()));
+        }
+        if (proto.hasCreatedAt()) {
+            dto.setCreatedAt(ProtobufHelpers.toLocalDateTime(proto.getCreatedAt()));
+        }
+        if (proto.hasModifiedAt()) {
+            dto.setModifiedAt(ProtobufHelpers.toLocalDateTime(proto.getModifiedAt()));
+        }
+    }
+
     public static TaskDTO mapTaskProtoToDto(TaskProtoDTO proto) {
         TaskDTO task = JsonUtils.fromJson(ProtoJsonUtils.toJson(proto), TaskDTO.class);
+        if (proto.hasCreatedAt()) {
+            task.setCreatedAt(ProtobufHelpers.toLocalDateTime(proto.getCreatedAt()));
+        }
+        if (proto.hasModifiedAt()) {
+            task.setModifiedAt(ProtobufHelpers.toLocalDateTime(proto.getModifiedAt()));
+        }
         if (proto.hasWaypointConfig()) {
             task.setConfig(JsonUtils.fromJson(
                     ProtoJsonUtils.toJson(proto.getWaypointConfig()), WaypointTaskConfig.class));
