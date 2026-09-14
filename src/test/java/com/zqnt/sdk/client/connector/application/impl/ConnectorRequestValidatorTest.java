@@ -41,7 +41,7 @@ class ConnectorRequestValidatorTest {
     @Test
     void rejectsMismatchingOrMultipleNotificationEvents() {
         var mismatching = StoreNotificationRequest.builder()
-                .eventType(StoreNotificationRequest.EventType.TASK)
+                .eventType(StoreNotificationRequest.EventType.COMMAND_EXECUTION)
                 .severity(StoreNotificationRequest.Severity.INFO)
                 .assetStatus(StoreNotificationRequest.AssetStatusEvent.builder().sn("asset-sn").build())
                 .build();
@@ -53,10 +53,10 @@ class ConnectorRequestValidatorTest {
                 .eventType(StoreNotificationRequest.EventType.ASSET_STATUS)
                 .severity(StoreNotificationRequest.Severity.INFO)
                 .assetStatus(StoreNotificationRequest.AssetStatusEvent.builder().sn("asset-sn").build())
-                .task(StoreNotificationRequest.TaskEvent.builder()
-                        .taskId("task-1")
-                        .taskType(StoreNotificationRequest.TaskType.TASK_TYPE_DETECT)
-                        .status(StoreNotificationRequest.TaskStatus.TASK_RUNNING)
+                .commandExecution(StoreNotificationRequest.CommandExecutionEvent.builder()
+                        .externalExecutionId("execution-1")
+                        .status(StoreNotificationRequest.CommandExecutionStatus.COMMAND_EXECUTION_STATUS_RUNNING)
+                        .assetSn("asset-sn")
                         .build())
                 .build();
 
@@ -65,14 +65,14 @@ class ConnectorRequestValidatorTest {
     }
 
     @Test
-    void acceptsTypeSafeTaskNotification() {
+    void acceptsTypeSafeCommandExecutionNotification() {
         var request = StoreNotificationRequest.builder()
-                .eventType(StoreNotificationRequest.EventType.TASK)
+                .eventType(StoreNotificationRequest.EventType.COMMAND_EXECUTION)
                 .severity(StoreNotificationRequest.Severity.WARN)
-                .task(StoreNotificationRequest.TaskEvent.builder()
-                        .taskId("task-1")
-                        .taskType(StoreNotificationRequest.TaskType.TASK_TYPE_DETECT)
-                        .status(StoreNotificationRequest.TaskStatus.TASK_RUNNING)
+                .commandExecution(StoreNotificationRequest.CommandExecutionEvent.builder()
+                        .externalExecutionId("execution-1")
+                        .status(StoreNotificationRequest.CommandExecutionStatus.COMMAND_EXECUTION_STATUS_RUNNING)
+                        .assetSn("asset-sn")
                         .build())
                 .build();
 

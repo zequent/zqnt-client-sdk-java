@@ -5,40 +5,21 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+import java.util.Map;
+
 @Data @Builder @NoArgsConstructor @AllArgsConstructor
 public class StoreNotificationRequest {
-    public enum EventType { ASSET_STATUS, TASK, MISSION }
+    /** @see #COMMAND_EXECUTION for the vendor-neutral event that replaced the legacy TASK notification. */
+    public enum EventType { ASSET_STATUS, MISSION, COMMAND_EXECUTION }
     public enum Severity { INFO, WARN, CRITICAL }
-    public enum TaskType {
-        TASK_TYPE_UNSPECIFIED,
-        TASK_TYPE_DETECT,
-        TASK_TYPE_AREA_MAPPING,
-        TASK_TYPE_WAYPOINT,
-        TASK_TYPE_POI,
-        TASK_TYPE_FOLLOW,
-        TASK_TYPE_TRACK,
-        TASK_TYPE_COUNTER_DRONE,
-        TASK_TYPE_TAKE_OFF,
-        TASK_TYPE_GO_TO,
-        TASK_TYPE_RETURN_TO_HOME,
-        TASK_TYPE_ENTER_MANUAL_CONTROL,
-        TASK_TYPE_EXIT_MANUAL_CONTROL,
-        TASK_TYPE_LOOK_AT,
-        TASK_TYPE_TAKE_PHOTO,
-        TASK_TYPE_OPEN_COVER,
-        TASK_TYPE_CLOSE_COVER,
-        TASK_TYPE_START_CHARGING,
-        TASK_TYPE_STOP_CHARGING,
-        TASK_TYPE_REBOOT_ASSET,
-        TASK_TYPE_BOOT_SUB_ASSET,
-        TASK_TYPE_REMOTE_DEBUG,
-        TASK_TYPE_CHANGE_AC_MODE,
-        TASK_TYPE_CUSTOM_COMMAND,
-        TASK_TYPE_EXTERNAL
-    }
-    public enum TaskStatus {
-        TASK_UNKNOWN, TASK_DRAFT, TASK_SCHEDULED, TASK_RUNNING, TASK_ERROR,
-        TASK_COMPLETED, TASK_PREPARED, TASK_PAUSED
+    public enum CommandExecutionStatus {
+        COMMAND_EXECUTION_STATUS_UNSPECIFIED,
+        COMMAND_EXECUTION_STATUS_ACCEPTED,
+        COMMAND_EXECUTION_STATUS_RUNNING,
+        COMMAND_EXECUTION_STATUS_SUCCEEDED,
+        COMMAND_EXECUTION_STATUS_FAILED,
+        COMMAND_EXECUTION_STATUS_CANCELLED
     }
     public enum MissionType {
         MISSION_TYPE_UNSPECIFIED,
@@ -75,8 +56,8 @@ public class StoreNotificationRequest {
     private EventType eventType;
     private Severity severity;
     private AssetStatusEvent assetStatus;
-    private TaskEvent task;
     private MissionEvent mission;
+    private CommandExecutionEvent commandExecution;
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class AssetStatusEvent {
@@ -86,14 +67,17 @@ public class StoreNotificationRequest {
         private String message;
     }
 
+    /** Vendor-neutral lifecycle feedback for one physical command dispatched to an edge adapter. */
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
-    public static class TaskEvent {
-        private String taskId;
-        private TaskType taskType;
-        private TaskStatus status;
+    public static class CommandExecutionEvent {
+        private String externalExecutionId;
+        private String commandId;
+        private CommandExecutionStatus status;
         private Float progress;
         private String message;
-        private String externalTaskType;
+        private Map<String, Object> output;
+        private LocalDateTime occurredAt;
+        private String assetSn;
     }
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor

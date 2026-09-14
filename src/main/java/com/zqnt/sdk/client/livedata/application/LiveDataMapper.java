@@ -148,9 +148,15 @@ public class LiveDataMapper {
             NotificationEvent event = protoResponse.getEvent();
             switch (event.getEventCase()) {
                 case ASSET_STATUS -> response.setAssetStatus(mapAssetStatusEvent(event.getAssetStatus()));
-                case TASK -> response.setTaskEvent(mapTaskEvent(event.getTask()));
                 case MISSION -> response.setMissionEvent(mapMissionEvent(event.getMission()));
+                case SKILL_EXECUTION -> response.setSkillExecutionEvent(
+                        mapSkillExecutionEvent(event.getSkillExecution()));
+                case COMMAND_EXECUTION -> response.setCommandExecutionEvent(
+                        mapCommandExecutionEvent(event.getCommandExecution()));
                 case ERROR -> response.setError(mapNotificationErrorInfo(event.getError()));
+                case ASSET_RUNTIME -> {
+                    // Runtime changes are consumed through the runtime query API.
+                }
                 case EVENT_NOT_SET -> {
                     // No event set
                 }
@@ -407,21 +413,6 @@ public class LiveDataMapper {
                 .build();
     }
 
-    private StreamNotificationResponse.TaskEvent mapTaskEvent(TaskEvent proto) {
-        if (proto == null) {
-            return null;
-        }
-
-        return StreamNotificationResponse.TaskEvent.builder()
-                .taskId(proto.getTaskId())
-                .taskType(proto.getTaskType())
-                .status(proto.getStatus())
-                .progress(nullable(proto.hasProgress(), proto.getProgress()))
-                .message(nullable(proto.hasMessage(), proto.getMessage()))
-                .externalTaskType(nullable(proto.hasExternalTaskType(), proto.getExternalTaskType()))
-                .build();
-    }
-
     private StreamNotificationResponse.MissionEvent mapMissionEvent(MissionEvent proto) {
         if (proto == null) {
             return null;
@@ -432,6 +423,38 @@ public class LiveDataMapper {
                 .missionType(proto.getMissionType())
                 .status(proto.getStatus())
                 .message(nullable(proto.hasMessage(), proto.getMessage()))
+                .build();
+    }
+
+    private StreamNotificationResponse.SkillExecutionEvent mapSkillExecutionEvent(
+            com.zqnt.utils.execution.proto.SkillExecutionEventProto proto) {
+        return StreamNotificationResponse.SkillExecutionEvent.builder()
+                .eventId(proto.getEventId())
+                .executionId(proto.getExecutionId())
+                .assetSn(proto.getAssetSn())
+                .type(proto.getType())
+                .executionStatus(proto.getExecutionStatus())
+                .nodeId(nullable(proto.hasNodeId(), proto.getNodeId()))
+                .nodeStatus(proto.hasNodeStatus() ? proto.getNodeStatus() : null)
+                .progress(nullable(proto.hasProgress(), proto.getProgress()))
+                .occurredAt(timestampToInstant(proto.getOccurredAt()))
+                .error(proto.hasError() ? mapNotificationErrorInfo(proto.getError()) : null)
+                .data(structToMap(proto.getData().getFieldsMap()))
+                .build();
+    }
+
+    private StreamNotificationResponse.CommandExecutionEvent mapCommandExecutionEvent(
+            com.zqnt.utils.events.proto.CommandExecutionEvent proto) {
+        return StreamNotificationResponse.CommandExecutionEvent.builder()
+                .externalExecutionId(proto.getExternalExecutionId())
+                .commandId(nullable(proto.hasCommandId(), proto.getCommandId()))
+                .status(proto.getStatus())
+                .progress(nullable(proto.hasProgress(), proto.getProgress()))
+                .message(nullable(proto.hasMessage(), proto.getMessage()))
+                .output(structToMap(proto.getOutput().getFieldsMap()))
+                .error(proto.hasError() ? mapNotificationErrorInfo(proto.getError()) : null)
+                .occurredAt(timestampToInstant(proto.getOccurredAt()))
+                .assetSn(proto.getAssetSn())
                 .build();
     }
 
@@ -453,9 +476,10 @@ public class LiveDataMapper {
         }
         return switch (protoResponse.getEvent().getEventCase()) {
             case ASSET_STATUS -> NotificationEventType.NOTIFICATION_EVENT_ASSET_STATUS;
-            case TASK -> NotificationEventType.NOTIFICATION_EVENT_TASK;
             case MISSION -> NotificationEventType.NOTIFICATION_EVENT_MISSION;
             case ASSET_RUNTIME -> NotificationEventType.NOTIFICATION_EVENT_ASSET_RUNTIME;
+            case SKILL_EXECUTION -> NotificationEventType.NOTIFICATION_EVENT_CAPABILITY_EXECUTION;
+            case COMMAND_EXECUTION -> NotificationEventType.NOTIFICATION_EVENT_COMMAND_EXECUTION;
             case ERROR, EVENT_NOT_SET -> null;
         };
     }

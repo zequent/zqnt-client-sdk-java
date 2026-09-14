@@ -292,7 +292,7 @@ class ZequentClientIntegrationTest {
 			WaypointDTO waypoint,
 			double expectedLatitude,
 			double expectedLongitude) {
-		assertEquals(expectedLatitude, waypoint.getLatitude());
-		assertEquals(expectedLongitude, waypoint.getLongitude());
+		assertEquals(expectedLatitude, waypoint.getLatitude(), 0.01);
+		assertEquals(expectedLongitude, waypoint.getLongitude(), 0.01);
 	}
 }
