@@ -21,10 +21,22 @@ public record SkillExecutionCommand(
         String theatreId) {
 
     public SkillExecutionCommand {
-        assetSn = requireText(assetSn, "assetSn");
         spec = Objects.requireNonNull(spec, "spec must not be null");
         if (spec.getExecutionCase() == SkillExecutionSpecProto.ExecutionCase.EXECUTION_NOT_SET) {
             throw new IllegalArgumentException("spec must contain a simple or package execution");
+        }
+        // An Application may name no asset: the platform resolves one from the Application's own
+        // deployment scope, or by policy when it declares none. Requiring one here rejected the
+        // request before it was ever sent, so the dynamic path was unreachable through this SDK
+        // however the server was configured — and an alarm, or anything else starting an
+        // Application without a person present, cannot name a drone in advance.
+        //
+        // A simple command still must: nothing selects an asset for a bare capability, so a blank
+        // one there is a mistake worth catching here rather than one round trip later.
+        if (spec.hasSimple()) {
+            assetSn = requireText(assetSn, "assetSn");
+        } else {
+            assetSn = assetSn == null ? "" : assetSn;
         }
         options = options == null ? SkillExecutionOptionsProto.getDefaultInstance() : options;
         idempotencyKey = requireText(idempotencyKey, "idempotencyKey");

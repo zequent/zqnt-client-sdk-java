@@ -2,6 +2,7 @@ package com.zqnt.sdk.client.missionautonomy.capabilities;
 
 import com.google.protobuf.Struct;
 import com.zqnt.utils.devicecontrol.proto.CapabilityTarget;
+import com.zqnt.utils.execution.proto.ApplicationExecutionSpecProto;
 import com.zqnt.utils.execution.proto.SimpleExecutionSpecProto;
 import com.zqnt.utils.execution.proto.SkillExecutionOptionsProto;
 import com.zqnt.utils.execution.proto.SkillExecutionSpecProto;
@@ -56,6 +57,22 @@ class CapabilityApiTest {
                 null, null, 201, null));
         assertThrows(IllegalArgumentException.class, () -> new SkillExecutionSignalCommand(
                 "exec-1", null, null, null, null, null));
+    }
+
+    /** An Application may name no asset — the platform resolves one from its deployment scope, or by
+     * policy when it declares none. Rejecting it here made that path unreachable through the SDK. */
+    @Test
+    void acceptsAnApplicationExecutionThatNamesNoAsset() {
+        var applicationSpec = SkillExecutionSpecProto.newBuilder().setApplication(
+                ApplicationExecutionSpecProto.newBuilder()
+                        .setApplicationId("app-1").setSkillId("skill-1")).build();
+
+        for (String noAsset : new String[] {null, "", " "}) {
+            var command = new SkillExecutionCommand(noAsset, applicationSpec,
+                    SkillExecutionOptionsProto.getDefaultInstance(), "key", null, null, null);
+            assertTrue(command.assetSn() == null || command.assetSn().isBlank(),
+                    "a blank assetSn must survive as blank so the server resolves it");
+        }
     }
 
     @Test
