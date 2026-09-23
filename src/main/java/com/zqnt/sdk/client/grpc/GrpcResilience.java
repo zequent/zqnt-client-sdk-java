@@ -4,6 +4,8 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -14,6 +16,24 @@ import java.util.function.Supplier;
  */
 @Slf4j
 public class GrpcResilience {
+
+    /**
+     * Status codes the server itself answered with. They say the request was wrong or unsupported, not
+     * that the service is unhealthy, so they must not count towards opening the circuit — one breaker is
+     * shared by every method of a service client, and five clicks on an unimplemented command would
+     * otherwise block every other command for every user.
+     */
+    private static final Set<Status.Code> NON_TRANSIENT_CODES = EnumSet.of(
+            Status.Code.CANCELLED,
+            Status.Code.INVALID_ARGUMENT,
+            Status.Code.NOT_FOUND,
+            Status.Code.ALREADY_EXISTS,
+            Status.Code.PERMISSION_DENIED,
+            Status.Code.FAILED_PRECONDITION,
+            Status.Code.ABORTED,
+            Status.Code.OUT_OF_RANGE,
+            Status.Code.UNIMPLEMENTED,
+            Status.Code.UNAUTHENTICATED);
 
     private final int maxRetryAttempts;
     private final long retryDelayMillis;
@@ -70,7 +90,9 @@ public class GrpcResilience {
                                 });
                         return delayedRetry;
                     } else {
-                        recordFailure(cause);
+                        if (countsAsFailure(cause)) {
+                            recordFailure(cause);
+                        }
                         return CompletableFuture.failedFuture(
                                 new RuntimeException("All retry attempts failed after " + (attempt + 1) + " tries", cause)
                         );
@@ -111,7 +133,9 @@ public class GrpcResilience {
             }
         }
 
-        recordFailure(lastException);
+        if (countsAsFailure(lastException)) {
+            recordFailure(lastException);
+        }
         throw new RuntimeException("All retry attempts failed", lastException);
     }
 
@@ -168,6 +192,13 @@ public class GrpcResilience {
                     code == Status.Code.INTERNAL;
         }
         return true; // Retry other exceptions
+    }
+
+    private boolean countsAsFailure(Throwable e) {
+        if (e instanceof StatusRuntimeException) {
+            return !NON_TRANSIENT_CODES.contains(((StatusRuntimeException) e).getStatus().getCode());
+        }
+        return true;
     }
 
     private Throwable unwrapException(Throwable throwable) {
