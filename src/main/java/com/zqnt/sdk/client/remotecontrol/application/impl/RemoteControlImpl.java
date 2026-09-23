@@ -323,11 +323,13 @@ public class RemoteControlImpl implements RemoteControl {
 	@Override
 	public CompletableFuture<RemoteControlResponse> bootSubAsset(DockOperationRequest request) {
 		validateSn(request.getSn());
-		log.info("BootSubAsset: sn={}, boot={}", request.getSn(), request.getValue());
+		// No value means "boot": treating it as false would power the sub-asset down instead.
+		boolean bootUp = request.getValue() == null || request.getValue();
+		log.info("BootSubAsset: sn={}, boot={}", request.getSn(), bootUp);
 
 		var protoRequest = ToggleCommandRequest.newBuilder()
 				.setBase(buildBase(request.getSn()))
-				.setEnabled(request.getValue() != null && request.getValue())
+				.setEnabled(bootUp)
 				.build();
 
 		return executeAsync(observer -> asyncStub.bootSubAsset(protoRequest, observer))
@@ -351,10 +353,14 @@ public class RemoteControlImpl implements RemoteControl {
 	@Override
 	public CompletableFuture<RemoteControlResponse> changeAcMode(DockOperationRequest request) {
 		validateSn(request.getSn());
-		log.info("ChangeAcMode: sn={}", request.getSn());
+		if (request.getAcMode() == null) {
+			throw new IllegalArgumentException("acMode is required");
+		}
+		log.info("ChangeAcMode: sn={}, mode={}", request.getSn(), request.getAcMode());
 
 		var protoRequest = ChangeAcModeCommandRequest.newBuilder()
 				.setBase(buildBase(request.getSn()))
+				.setMode(request.getAcMode().toProto())
 				.build();
 
 		return executeAsync(observer -> asyncStub.changeAcMode(protoRequest, observer))
