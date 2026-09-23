@@ -78,12 +78,6 @@ final class ConnectorRequestValidator {
         return request;
     }
 
-    static DeleteSchedulersByTaskRequest validate(DeleteSchedulersByTaskRequest request) {
-        require(request, "request");
-        requireText(request.getTaskId(), "taskId");
-        return request;
-    }
-
     static GetAllActivePoliciesRequest validate(GetAllActivePoliciesRequest request) {
         return require(request, "request");
     }
@@ -253,15 +247,15 @@ final class ConnectorRequestValidator {
         require(request.getSeverity(), "severity");
 
         int eventCount = (request.getAssetStatus() != null ? 1 : 0)
-                + (request.getTask() != null ? 1 : 0)
+                + (request.getCommandExecution() != null ? 1 : 0)
                 + (request.getMission() != null ? 1 : 0);
         if (eventCount != 1) {
-            throw invalid("exactly one of assetStatus, task or mission must be set");
+            throw invalid("exactly one of assetStatus, commandExecution or mission must be set");
         }
 
         switch (request.getEventType()) {
             case ASSET_STATUS -> validateAssetStatus(require(request.getAssetStatus(), "assetStatus"));
-            case TASK -> validateTask(require(request.getTask(), "task"));
+            case COMMAND_EXECUTION -> validateCommandExecution(require(request.getCommandExecution(), "commandExecution"));
             case MISSION -> validateMission(require(request.getMission(), "mission"));
         }
         return request;
@@ -271,13 +265,10 @@ final class ConnectorRequestValidator {
         requireText(event.getSn(), "assetStatus.sn");
     }
 
-    private static void validateTask(StoreNotificationRequest.TaskEvent event) {
-        requireText(event.getTaskId(), "task.taskId");
-        require(event.getTaskType(), "task.taskType");
-        require(event.getStatus(), "task.status");
-        if (event.getTaskType() == StoreNotificationRequest.TaskType.TASK_TYPE_EXTERNAL) {
-            requireText(event.getExternalTaskType(), "task.externalTaskType");
-        }
+    private static void validateCommandExecution(StoreNotificationRequest.CommandExecutionEvent event) {
+        requireText(event.getExternalExecutionId(), "commandExecution.externalExecutionId");
+        require(event.getStatus(), "commandExecution.status");
+        requireText(event.getAssetSn(), "commandExecution.assetSn");
     }
 
     private static void validateMission(StoreNotificationRequest.MissionEvent event) {

@@ -145,6 +145,6 @@ class ConnectorMapperTest {
         assertEquals(NotificationSeverity.NOTIFICATION_SEVERITY_INFO, notificationProto.getSeverity());
         assertTrue(notificationProto.getEvent().hasAssetStatus());
         assertTrue(notificationProto.getEvent().getAssetStatus().getOnline());
-        assertFalse(notificationProto.getEvent().hasTask());
+        assertFalse(notificationProto.getEvent().hasCommandExecution());
     }
 }
