@@ -13,5 +13,7 @@ public class DockOperationRequest {
     private String sn;
     private String assetId;
     private Boolean value;
+    /** Only read by {@code changeAcMode}. */
+    private AirConditionerMode acMode;
 }
 
