@@ -13,6 +13,12 @@ import io.grpc.Status;
 /**
  * The client credential a customer application calls the Zequent platform with.
  *
+ * <p>A host application whose credential is not one fixed token (it forwards its own caller's
+ * token, or rotates a short-lived one) registers an {@link io.grpc.ClientInterceptor} instead —
+ * {@code ZequentClient.builder().interceptor(...)}, or a
+ * {@link com.zqnt.sdk.client.ZequentClientInterceptor} bean in Quarkus. An {@code authorization}
+ * header set by such an interceptor wins; the fixed token is then not sent.</p>
+ *
  * <p>Every core service refuses a call without a credential. An organization administrator issues
  * one in the console (Deploy &rarr; Access &amp; Integrations &rarr; Credentials, kind "client"); it
  * is shown once. Hand it to the SDK with {@code ZequentClient.builder().clientToken(...)},
@@ -66,6 +72,16 @@ public final class ClientCredentials {
         return status;
     }
 
+    /** A refusal of the credential the host application's own interceptor supplied. */
+    static Status explainHostCredential(Status status) {
+        if (status.getCode() != Status.Code.UNAUTHENTICATED && status.getCode() != Status.Code.PERMISSION_DENIED) {
+            return status;
+        }
+        String cause = status.getDescription() == null ? "" : " (" + status.getDescription() + ")";
+        return status.withDescription("Zequent refused the credential set by the application's own client "
+                + "interceptor" + cause);
+    }
+
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
     }
@@ -83,13 +99,17 @@ public final class ClientCredentials {
             return new ForwardingClientCall.SimpleForwardingClientCall<>(next.newCall(method, callOptions)) {
                 @Override
                 public void start(Listener<RespT> responseListener, Metadata headers) {
-                    if (token != null) {
+                    // A host interceptor that already named the caller (see
+                    // ZequentClientInterceptor) wins: two authorization values would leave the
+                    // platform reading whichever came last.
+                    boolean fromHost = headers.containsKey(AUTHORIZATION);
+                    if (token != null && !fromHost) {
                         headers.put(AUTHORIZATION, "Bearer " + token);
                     }
                     super.start(new ForwardingClientCallListener.SimpleForwardingClientCallListener<>(responseListener) {
                         @Override
                         public void onClose(Status status, Metadata trailers) {
-                            super.onClose(explain(status, token != null), trailers);
+                            super.onClose(fromHost ? explainHostCredential(status) : explain(status, token != null), trailers);
                         }
                     }, headers);
                 }

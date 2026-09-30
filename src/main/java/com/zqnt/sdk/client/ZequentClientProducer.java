@@ -12,8 +12,11 @@ import com.zqnt.sdk.client.missionautonomy.application.impl.MissionAutonomyImpl;
 import com.zqnt.sdk.client.remotecontrol.application.RemoteControl;
 import com.zqnt.sdk.client.remotecontrol.application.impl.RemoteControlImpl;
 
+import io.grpc.ClientInterceptor;
 import io.grpc.ManagedChannel;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Produces;
 import lombok.extern.slf4j.Slf4j;
@@ -31,10 +34,18 @@ public class ZequentClientProducer {
 
 
     private final ZequentClientConfigFactory configFactory;
+    private final Instance<ClientInterceptor> interceptors;
 
-	public ZequentClientProducer(ZequentClientConfigFactory configFactory) {
-		this.configFactory = configFactory;
-	}
+    /**
+     * @param interceptors every {@link ClientInterceptor} bean the application marked with
+     *                     {@link ZequentClientInterceptor}; put on every channel of the client
+     */
+    @Inject
+    public ZequentClientProducer(ZequentClientConfigFactory configFactory,
+                                 @ZequentClientInterceptor Instance<ClientInterceptor> interceptors) {
+        this.configFactory = configFactory;
+        this.interceptors = interceptors;
+    }
 
 	/**
      * Produces the ZequentClient bean - the ONLY public API for customers.
@@ -46,19 +57,22 @@ public class ZequentClientProducer {
         log.info("Creating ZequentClient from properties");
 
         // Create config from properties
-        GrpcClientConfig config = configFactory.createConfig();
+        List<ClientInterceptor> contributed = new ArrayList<>();
+        interceptors.forEach(contributed::add);
+        GrpcClientConfig config = configFactory.createConfig().toBuilder().interceptors(contributed).build();
 
         // Create channels for each service
         List<ManagedChannel> channels = new ArrayList<>();
-        String token = config.getClientToken();
-        if (token == null) {
-            log.warn("No client credential configured (zequent.client-token or ZQNT_CLIENT_TOKEN): "
-                    + "the platform will refuse every call");
+        if (!config.hasCredentialSource()) {
+            log.warn("No client credential configured (zequent.client-token, ZQNT_CLIENT_TOKEN or a "
+                    + "@ZequentClientInterceptor bean): the platform will refuse every call");
+        } else if (!contributed.isEmpty()) {
+            log.info("ZequentClient channels carry {} @ZequentClientInterceptor interceptor(s)", contributed.size());
         }
-        ManagedChannel remoteControlChannel = ChannelFactory.createChannel(config.getRemoteControlConfig(), token);
-        ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(config.getMissionAutonomyConfig(), token);
-        ManagedChannel liveDataChannel = ChannelFactory.createChannel(config.getLiveDataConfig(), token);
-        ManagedChannel connectorChannel = ChannelFactory.createChannel(config.getConnectorConfig(), token);
+        ManagedChannel remoteControlChannel = ChannelFactory.createChannel(config.getRemoteControlConfig(), config);
+        ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(config.getMissionAutonomyConfig(), config);
+        ManagedChannel liveDataChannel = ChannelFactory.createChannel(config.getLiveDataConfig(), config);
+        ManagedChannel connectorChannel = ChannelFactory.createChannel(config.getConnectorConfig(), config);
         channels.add(remoteControlChannel);
         channels.add(missionAutonomyChannel);
         channels.add(liveDataChannel);

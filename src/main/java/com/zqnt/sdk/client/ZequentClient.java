@@ -166,6 +166,7 @@ public class ZequentClient implements AutoCloseable {
         private int liveDataSchedulerThreads = 2;
         private ServiceConfig.LoadBalancerType defaultLoadBalancerType = ServiceConfig.LoadBalancerType.ROUND_ROBIN;
         private String clientToken;
+        private final List<io.grpc.ClientInterceptor> interceptors = new ArrayList<>();
 
         // Service-specific builders
         private ServiceConfigBuilder remoteControlBuilder;
@@ -228,6 +229,24 @@ public class ZequentClient implements AutoCloseable {
             return this;
         }
 
+        /**
+         * Adds an interceptor to every channel the client creates (all four services, unary and
+         * streaming calls) — for a host application whose credential is not one fixed token, e.g.
+         * one that forwards its own caller's token. Interceptors run in the order added, before the
+         * SDK's credential interceptor; an {@code authorization} header they set wins over
+         * {@link #clientToken(String)}.
+         */
+        public ZequentClientBuilder interceptor(io.grpc.ClientInterceptor interceptor) {
+            this.interceptors.add(java.util.Objects.requireNonNull(interceptor, "interceptor"));
+            return this;
+        }
+
+        /** Adds several interceptors; see {@link #interceptor(io.grpc.ClientInterceptor)}. */
+        public ZequentClientBuilder interceptors(java.util.Collection<? extends io.grpc.ClientInterceptor> interceptors) {
+            interceptors.forEach(this::interceptor);
+            return this;
+        }
+
         public ZequentClientBuilder defaultLoadBalancerType(ServiceConfig.LoadBalancerType type) {
             this.defaultLoadBalancerType = type;
             return this;
@@ -277,19 +296,19 @@ public class ZequentClient implements AutoCloseable {
                     .liveDataSchedulerThreads(liveDataSchedulerThreads)
                     .defaultLoadBalancerType(defaultLoadBalancerType)
                     .clientToken(ClientCredentials.resolve(clientToken))
+                    .interceptors(interceptors)
                     .build();
-            if (globalConfig.getClientToken() == null) {
+            if (!globalConfig.hasCredentialSource()) {
                 log.warn("No client credential configured (ZQNT_CLIENT_TOKEN or builder().clientToken(...)): "
                         + "the platform will refuse every call");
             }
 
             // Create channels for each service
             List<ManagedChannel> channels = new ArrayList<>();
-            String token = globalConfig.getClientToken();
-            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig, token);
-            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig, token);
-            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig, token);
-            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig, token);
+            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig, globalConfig);
+            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig, globalConfig);
+            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig, globalConfig);
+            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig, globalConfig);
             channels.add(remoteControlChannel);
             channels.add(missionAutonomyChannel);
             channels.add(liveDataChannel);

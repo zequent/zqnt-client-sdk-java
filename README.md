@@ -70,6 +70,25 @@ It is sent as `authorization: Bearer <token>` on every call. A refusal surfaces 
 expired/revoked one; `PERMISSION_DENIED` — the call is outside what a client credential may do (an
 asset of another organization, or an administrative RPC). Neither is retried.
 
+#### A credential that is not one fixed token
+
+A service that forwards its own caller's token, or rotates a short-lived one, registers a gRPC
+`ClientInterceptor` instead. It is put on every channel the SDK creates (all four services, unary
+and streaming calls) and runs before the SDK's own credential interceptor: an `authorization`
+header it sets wins, and the fixed client token is then not sent.
+
+```java
+ZequentClient client = ZequentClient.builder().interceptor(myAuthInterceptor) /* ... */ .build();
+```
+
+In Quarkus, mark a `ClientInterceptor` bean with `@ZequentClientInterceptor` and the injected
+`ZequentClient` picks it up:
+
+```java
+@Produces @ZequentClientInterceptor
+ClientInterceptor zequentCredentials(MyAuthInterceptor interceptor) { return interceptor; }
+```
+
 ### 3. Setup for Your Framework
 
 #### 🔹 Quarkus (Automatic via CDI)
