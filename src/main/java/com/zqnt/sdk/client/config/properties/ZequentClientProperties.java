@@ -11,14 +11,14 @@ import io.smallrye.config.WithName;
  * Example application.properties:
  * <pre>
  * zequent.remote-control-service.host=localhost
- * zequent.remote-control-service.port=9091
+ * zequent.remote-control-service.port=8002
  * zequent.remote-control-service.use-stork=false
  * </pre>
  *
  * Example environment variables:
  * <pre>
  * ZEQUENT_REMOTE_CONTROL_SERVICE_HOST=localhost
- * ZEQUENT_REMOTE_CONTROL_SERVICE_PORT=9091
+ * ZEQUENT_REMOTE_CONTROL_SERVICE_PORT=8002
  * </pre>
  */
 @ConfigMapping(prefix = "zequent")

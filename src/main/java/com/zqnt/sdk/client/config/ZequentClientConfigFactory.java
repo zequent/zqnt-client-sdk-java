@@ -24,25 +24,25 @@ public class ZequentClientConfigFactory {
         ServiceConfig remoteControlConfig = createServiceConfig(
                 "remote-control",
                 properties.remoteControlService(),
-                9091
+                ZequentEnvironment.LOCAL_PORTS.get("remote-control")
         );
 
         ServiceConfig missionAutonomyConfig = createServiceConfig(
                 "mission-autonomy",
                 properties.missionAutonomyService(),
-                9092
+                ZequentEnvironment.LOCAL_PORTS.get("mission-autonomy")
         );
 
         ServiceConfig liveDataConfig = createServiceConfig(
                 "live-data",
                 properties.liveDataService(),
-                9093
+                ZequentEnvironment.LOCAL_PORTS.get("live-data")
         );
 
         ServiceConfig connectorConfig = createServiceConfig(
                 "connector",
                 properties.connectorService(),
-                8010
+                ZequentEnvironment.LOCAL_PORTS.get("connector")
         );
 
         var resilience = properties.resilience();
