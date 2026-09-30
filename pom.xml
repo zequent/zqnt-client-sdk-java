@@ -43,11 +43,22 @@
         <guava.version>33.4.8-android</guava.version>
         <slf4j.version>2.0.16</slf4j.version>
         <jackson3.version>3.1.5</jackson3.version>
+        <jackson.version>2.21.7</jackson.version>
         <proguard.version>7.9.1</proguard.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- jackson 2.x arrives transitively through zqnt-utils-java (2.18.9 at the pinned
+                 preview); pinned here for CVE-2026-68497 until the next utils preview is picked up. 2.21.x, not
+                 2.18.x: the optional Stork Kubernetes provider already brings jackson-core/yaml 2.21. -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <!-- Fixes CVE-2026-59889 pulled in by the optional Stork Kubernetes provider. -->
             <dependency>
                 <groupId>tools.jackson.core</groupId>
