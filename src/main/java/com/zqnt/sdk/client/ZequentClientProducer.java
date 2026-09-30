@@ -50,10 +50,15 @@ public class ZequentClientProducer {
 
         // Create channels for each service
         List<ManagedChannel> channels = new ArrayList<>();
-        ManagedChannel remoteControlChannel = ChannelFactory.createChannel(config.getRemoteControlConfig());
-        ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(config.getMissionAutonomyConfig());
-        ManagedChannel liveDataChannel = ChannelFactory.createChannel(config.getLiveDataConfig());
-        ManagedChannel connectorChannel = ChannelFactory.createChannel(config.getConnectorConfig());
+        String token = config.getClientToken();
+        if (token == null) {
+            log.warn("No client credential configured (zequent.client-token or ZQNT_CLIENT_TOKEN): "
+                    + "the platform will refuse every call");
+        }
+        ManagedChannel remoteControlChannel = ChannelFactory.createChannel(config.getRemoteControlConfig(), token);
+        ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(config.getMissionAutonomyConfig(), token);
+        ManagedChannel liveDataChannel = ChannelFactory.createChannel(config.getLiveDataConfig(), token);
+        ManagedChannel connectorChannel = ChannelFactory.createChannel(config.getConnectorConfig(), token);
         channels.add(remoteControlChannel);
         channels.add(missionAutonomyChannel);
         channels.add(liveDataChannel);

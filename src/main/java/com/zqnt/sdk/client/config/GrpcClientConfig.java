@@ -48,6 +48,13 @@ public class GrpcClientConfig {
     @Builder.Default
     private int liveDataSchedulerThreads = 2;
 
+    /**
+     * The client credential sent on every call (see {@link com.zqnt.sdk.client.grpc.ClientCredentials}).
+     * Null: the {@code ZQNT_CLIENT_TOKEN} environment variable, if set.
+     */
+    @lombok.ToString.Exclude
+    private String clientToken;
+
     // Default load balancer for all services
     @Builder.Default
     private ServiceConfig.LoadBalancerType defaultLoadBalancerType = ServiceConfig.LoadBalancerType.ROUND_ROBIN;

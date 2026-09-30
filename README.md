@@ -42,7 +42,35 @@ The **Zequent Client SDK** is a **Java library/dependency** that customers add t
 </dependency>
 ```
 
-### 2. Setup for Your Framework
+### 2. Get a client credential
+
+The platform refuses every call that carries no credential. An organization administrator issues
+one in the console under **Deploy → Access & Integrations → Credentials** (kind **client**). It is
+shown once, belongs to that one organization, and reaches only that organization's assets,
+Applications and runs — never users, organizations or other administration.
+
+Hand it to the SDK in one of three ways (first one set wins):
+
+```java
+ZequentClient client = ZequentClient.builder().clientToken(token)   // 1. explicitly
+        .connector().host("core.example.com").port(8010).done()
+        .build();
+```
+
+```properties
+zequent.client-token=${ZQNT_CLIENT_TOKEN}   # 2. Quarkus configuration
+```
+
+```bash
+export ZQNT_CLIENT_TOKEN=eyJhbGciOiJFZERTQSIs...   # 3. the environment
+```
+
+It is sent as `authorization: Bearer <token>` on every call. A refusal surfaces as a
+`StatusRuntimeException` whose message says what to do: `UNAUTHENTICATED` — no credential, or an
+expired/revoked one; `PERMISSION_DENIED` — the call is outside what a client credential may do (an
+asset of another organization, or an administrative RPC). Neither is retried.
+
+### 3. Setup for Your Framework
 
 #### 🔹 Quarkus (Automatic via CDI)
 

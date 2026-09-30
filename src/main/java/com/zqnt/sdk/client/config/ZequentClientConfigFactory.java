@@ -62,6 +62,8 @@ public class ZequentClientConfigFactory {
                 .telemetryHeartbeatTimeoutSeconds(resilience.telemetryHeartbeatTimeoutSeconds())
                 .liveDataSchedulerThreads(resilience.liveDataSchedulerThreads())
                 .defaultLoadBalancerType(ServiceConfig.LoadBalancerType.ROUND_ROBIN)
+                .clientToken(com.zqnt.sdk.client.grpc.ClientCredentials.resolve(
+                        properties.clientToken().orElse(null)))
                 .build();
     }
 

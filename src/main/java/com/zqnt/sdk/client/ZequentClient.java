@@ -5,6 +5,7 @@ import com.zqnt.sdk.client.config.ServiceConfig;
 import com.zqnt.sdk.client.connector.application.Connector;
 import com.zqnt.sdk.client.connector.application.impl.ConnectorImpl;
 import com.zqnt.sdk.client.grpc.ChannelFactory;
+import com.zqnt.sdk.client.grpc.ClientCredentials;
 import com.zqnt.sdk.client.livedata.application.LiveData;
 import com.zqnt.sdk.client.livedata.application.impl.LiveDataImpl;
 import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
@@ -164,6 +165,7 @@ public class ZequentClient implements AutoCloseable {
         private int telemetryHeartbeatTimeoutSeconds = 35;
         private int liveDataSchedulerThreads = 2;
         private ServiceConfig.LoadBalancerType defaultLoadBalancerType = ServiceConfig.LoadBalancerType.ROUND_ROBIN;
+        private String clientToken;
 
         // Service-specific builders
         private ServiceConfigBuilder remoteControlBuilder;
@@ -216,6 +218,16 @@ public class ZequentClient implements AutoCloseable {
             return this;
         }
 
+        /**
+         * The client credential to call the platform with — issued in the console (Access &amp;
+         * Integrations &rarr; Credentials, kind "client"). Without one, the {@code ZQNT_CLIENT_TOKEN}
+         * environment variable is used; with neither, the platform refuses every call.
+         */
+        public ZequentClientBuilder clientToken(String clientToken) {
+            this.clientToken = clientToken;
+            return this;
+        }
+
         public ZequentClientBuilder defaultLoadBalancerType(ServiceConfig.LoadBalancerType type) {
             this.defaultLoadBalancerType = type;
             return this;
@@ -264,14 +276,20 @@ public class ZequentClient implements AutoCloseable {
                     .telemetryHeartbeatTimeoutSeconds(telemetryHeartbeatTimeoutSeconds)
                     .liveDataSchedulerThreads(liveDataSchedulerThreads)
                     .defaultLoadBalancerType(defaultLoadBalancerType)
+                    .clientToken(ClientCredentials.resolve(clientToken))
                     .build();
+            if (globalConfig.getClientToken() == null) {
+                log.warn("No client credential configured (ZQNT_CLIENT_TOKEN or builder().clientToken(...)): "
+                        + "the platform will refuse every call");
+            }
 
             // Create channels for each service
             List<ManagedChannel> channels = new ArrayList<>();
-            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig);
-            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig);
-            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig);
-            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig);
+            String token = globalConfig.getClientToken();
+            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig, token);
+            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig, token);
+            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig, token);
+            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig, token);
             channels.add(remoteControlChannel);
             channels.add(missionAutonomyChannel);
             channels.add(liveDataChannel);

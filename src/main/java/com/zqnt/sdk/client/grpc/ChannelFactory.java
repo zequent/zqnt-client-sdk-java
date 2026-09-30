@@ -14,9 +14,19 @@ import java.util.concurrent.TimeUnit;
 public class ChannelFactory {
 
     /**
-     * Create a managed channel for a service with the given configuration.
+     * Create a managed channel for a service with the given configuration, without a client
+     * credential. Core refuses such calls; kept for callers that add their own interceptors.
      */
     public static ManagedChannel createChannel(ServiceConfig config) {
+        return createChannel(config, null);
+    }
+
+    /**
+     * Create a managed channel for a service that sends {@code clientToken} (see
+     * {@link ClientCredentials}) on every call. A null token sends none, and refusals still come
+     * back with an explanation.
+     */
+    public static ManagedChannel createChannel(ServiceConfig config, String clientToken) {
         ManagedChannelBuilder<?> channelBuilder;
 
         if (config.isUseStork() && config.getStorkServiceName() != null) {
@@ -54,6 +64,8 @@ public class ChannelFactory {
             log.info("Max inbound message size set to {} bytes for service: {}",
                     config.getMaxInboundMessageSize(), config.getServiceName());
         }
+
+        channelBuilder.intercept(ClientCredentials.interceptor(clientToken));
 
         ManagedChannel channel = channelBuilder.build();
         log.info("Channel created successfully for service: {}", config.getServiceName());

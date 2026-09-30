@@ -48,6 +48,13 @@ public interface ZequentClientProperties {
     ServiceProperties connectorService();
 
     /**
+     * The client credential sent on every call ({@code zequent.client-token}, or the environment
+     * variable {@code ZEQUENT_CLIENT_TOKEN}); when unset, {@code ZQNT_CLIENT_TOKEN} is used. Issued in
+     * the console under Access &amp; Integrations &rarr; Credentials, kind "client".
+     */
+    java.util.Optional<String> clientToken();
+
+    /**
      * Global resilience configuration.
      */
     ResilienceProperties resilience();
