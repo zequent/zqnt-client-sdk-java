@@ -10,6 +10,17 @@ public interface RemoteControl {
     // Flight ops
     CompletableFuture<TakeoffResponse> takeoff(TakeoffRequest request);
     CompletableFuture<RemoteControlResponse> goTo(GoToRequest request);
+
+    /**
+     * A fly-to that may fly straight through a HARD_BLOCK or REQUIRE_APPROVAL no-fly zone which would
+     * otherwise refuse it. The platform honours the override only for an organization admin or a
+     * system admin (by the caller's own token) and records it in the run's safety audit; anybody else
+     * is refused. {@code false} is exactly {@link #goTo(GoToRequest)}.
+     */
+    default CompletableFuture<RemoteControlResponse> goTo(GoToRequest request, boolean noFlyZoneOverride) {
+        if (!noFlyZoneOverride) return goTo(request);
+        throw new UnsupportedOperationException("This RemoteControl does not support a no-fly zone override");
+    }
     CompletableFuture<RemoteControlResponse> returnToHome(ReturnToHomeRequest request);
     CompletableFuture<RemoteControlResponse> lookAt(LookAtRequest request);
 

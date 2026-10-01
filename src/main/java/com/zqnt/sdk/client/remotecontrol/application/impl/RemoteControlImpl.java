@@ -95,18 +95,25 @@ public class RemoteControlImpl implements RemoteControl {
 
 	@Override
 	public CompletableFuture<RemoteControlResponse> goTo(GoToRequest request) {
+		return goTo(request, false);
+	}
+
+	@Override
+	public CompletableFuture<RemoteControlResponse> goTo(GoToRequest request, boolean noFlyZoneOverride) {
 		validateSn(request.getSn());
 		validateCoordinates(request.getLatitude(), request.getLongitude(), request.getAltitude());
-		log.info("GoTo: sn={}", request.getSn());
+		log.info("GoTo: sn={}, noFlyZoneOverride={}", request.getSn(), noFlyZoneOverride);
 
-		var protoRequest = CoordinateCommandRequest.newBuilder()
+		var builder = CoordinateCommandRequest.newBuilder()
 				.setBase(buildBase(request.getSn()))
 				.setCoordinate(GeoCoordinate.newBuilder()
 						.setLatitude(request.getLatitude())
 						.setLongitude(request.getLongitude())
 						.setAltitude(request.getAltitude())
-						.build())
-				.build();
+						.build());
+		// Only ever sent when asked for: the platform decides whether this caller may use it.
+		if (noFlyZoneOverride) builder.setNoFlyZoneOverride(true);
+		var protoRequest = builder.build();
 
 		return executeAsync(observer -> asyncStub.goTo(protoRequest, observer))
 				.thenApply(proto -> toResponse(proto, request.getSn()));

@@ -480,6 +480,7 @@ public class LiveDataMapper {
             case ASSET_RUNTIME -> NotificationEventType.NOTIFICATION_EVENT_ASSET_RUNTIME;
             case SKILL_EXECUTION -> NotificationEventType.NOTIFICATION_EVENT_CAPABILITY_EXECUTION;
             case COMMAND_EXECUTION -> NotificationEventType.NOTIFICATION_EVENT_COMMAND_EXECUTION;
+            case LIVE_STREAM_CAPABILITY -> NotificationEventType.NOTIFICATION_EVENT_LIVE_STREAM_CAPABILITY;
             case ERROR, EVENT_NOT_SET -> null;
         };
     }

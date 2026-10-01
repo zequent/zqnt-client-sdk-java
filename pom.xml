@@ -166,7 +166,9 @@
         <dependency>
             <groupId>com.zqnt</groupId>
             <artifactId>zqnt-utils-java</artifactId>
-            <version>2.0.0</version>
+            <!-- zqnt-utils-java's 2.0.0 line, current preview (its PR #6): the released 2.0.0 predates
+                 the 2.0 contract this SDK speaks (e.g. CoordinateCommandRequest.no_fly_zone_override). -->
+            <version>1.0.0-PR6-2156253-SNAPSHOT</version>
         </dependency>
         <!-- Test dependencies (framework-agnostic) -->
         <dependency>
