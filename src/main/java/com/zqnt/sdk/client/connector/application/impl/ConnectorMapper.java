@@ -226,12 +226,6 @@ final class ConnectorMapper {
         return builder.build();
     }
 
-    com.zqnt.utils.mission.proto.DeleteSchedulersByTaskRequest deleteSchedulersByTask(
-            com.zqnt.sdk.client.connector.domains.DeleteSchedulersByTaskRequest request) {
-        return com.zqnt.utils.mission.proto.DeleteSchedulersByTaskRequest.newBuilder()
-                .setBase(base(request.getContext())).setTaskId(request.getTaskId()).build();
-    }
-
     ConnectorGetPoliciesRequest policies(GetPoliciesRequest request) {
         return ConnectorGetPoliciesRequest.newBuilder().setBase(base(request.getContext()))
                 .setPolicyType(request.getPolicyType()).build();
@@ -333,13 +327,18 @@ final class ConnectorMapper {
             var value = AssetStatusEvent.newBuilder().setSn(source.getSn());
             set(value::setAssetId, source.getAssetId()); set(value::setOnline, source.getOnline());
             set(value::setMessage, source.getMessage()); event.setAssetStatus(value);
-        } else if (request.getTask() != null) {
-            var source = request.getTask();
-            var value = TaskEvent.newBuilder().setTaskId(source.getTaskId())
-                    .setTaskType(TaskTypeProto.valueOf(source.getTaskType().name()))
-                    .setStatus(TaskStatus.valueOf(source.getStatus().name()));
-            set(value::setProgress, source.getProgress()); set(value::setMessage, source.getMessage());
-            set(value::setExternalTaskType, source.getExternalTaskType()); event.setTask(value);
+        } else if (request.getCommandExecution() != null) {
+            var source = request.getCommandExecution();
+            var value = com.zqnt.utils.events.proto.CommandExecutionEvent.newBuilder()
+                    .setExternalExecutionId(source.getExternalExecutionId())
+                    .setStatus(CommandExecutionStatus.valueOf(source.getStatus().name()))
+                    .setAssetSn(source.getAssetSn())
+                    .setOccurredAt(source.getOccurredAt() != null
+                            ? ProtobufHelpers.toTimestamp(source.getOccurredAt()) : ProtobufHelpers.now());
+            set(value::setCommandId, source.getCommandId()); set(value::setProgress, source.getProgress());
+            set(value::setMessage, source.getMessage());
+            if (source.getOutput() != null) value.setOutput(struct(source.getOutput()));
+            event.setCommandExecution(value);
         } else if (request.getMission() != null) {
             var source = request.getMission();
             var value = MissionEvent.newBuilder().setMissionId(source.getMissionId())

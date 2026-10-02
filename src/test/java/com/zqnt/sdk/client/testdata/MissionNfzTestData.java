@@ -41,7 +41,7 @@ public final class MissionNfzTestData {
                 .active(true)
                 .priority(0)
                 .config(DynamicConfigDTO.builder()
-                        .templateId("sitaco-nfz")
+                        .templateId("zqnt-nfz")
                         .templateConfig(Map.ofEntries(
                                 Map.entry("description", "Test Sperrzone"),
                                 Map.entry("zoneType", "AIR"),
@@ -55,7 +55,7 @@ public final class MissionNfzTestData {
                                 Map.entry("operationId", OPERATION_ID.toString()),
                                 Map.entry("serverCreateTime", "2026-08-05T11:12:22.525728Z"),
                                 Map.entry("serverUpdateTime", "2026-08-05T11:12:22.525728Z"),
-                                Map.entry("sitacoBaseId", MISSION_ID)))
+                                Map.entry("baseId", MISSION_ID)))
                         .build())
                 .build();
     }

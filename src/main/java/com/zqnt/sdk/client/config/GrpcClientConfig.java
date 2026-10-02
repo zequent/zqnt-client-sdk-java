@@ -7,7 +7,7 @@ import lombok.Data;
  * Global configuration for all gRPC client connections with resilience settings.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class GrpcClientConfig {
 
     // Service-specific configurations
@@ -47,6 +47,28 @@ public class GrpcClientConfig {
 
     @Builder.Default
     private int liveDataSchedulerThreads = 2;
+
+    /**
+     * The client credential sent on every call (see {@link com.zqnt.sdk.client.grpc.ClientCredentials}).
+     * Null: the {@code ZQNT_CLIENT_TOKEN} environment variable, if set.
+     */
+    @lombok.ToString.Exclude
+    private String clientToken;
+
+    /**
+     * Interceptors the host application puts on every channel the SDK creates (unary and streaming
+     * calls of all four services), in the order given: the first one sees each call first. They run
+     * before the SDK's own credential interceptor, so an {@code authorization} header set here wins
+     * over {@link #clientToken}, which is then not sent.
+     */
+    @lombok.Singular
+    @lombok.ToString.Exclude
+    private java.util.List<io.grpc.ClientInterceptor> interceptors;
+
+    /** Whether any credential is configured: a client token, or an interceptor that may carry one. */
+    public boolean hasCredentialSource() {
+        return clientToken != null || (interceptors != null && !interceptors.isEmpty());
+    }
 
     // Default load balancer for all services
     @Builder.Default

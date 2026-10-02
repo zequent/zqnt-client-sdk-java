@@ -2,9 +2,11 @@ package com.zqnt.sdk.client;
 
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.config.ServiceConfig;
+import com.zqnt.sdk.client.config.ZequentEnvironment;
 import com.zqnt.sdk.client.connector.application.Connector;
 import com.zqnt.sdk.client.connector.application.impl.ConnectorImpl;
 import com.zqnt.sdk.client.grpc.ChannelFactory;
+import com.zqnt.sdk.client.grpc.ClientCredentials;
 import com.zqnt.sdk.client.livedata.application.LiveData;
 import com.zqnt.sdk.client.livedata.application.impl.LiveDataImpl;
 import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
@@ -65,6 +67,19 @@ public class ZequentClient implements AutoCloseable {
     @Deprecated
     public static ZequentClientBuilder builder() {
         return new ZequentClientBuilder();
+    }
+
+    /**
+     * A client configured entirely from the environment, for applications without CDI — the same
+     * variables every Zequent client SDK reads (see {@link com.zqnt.sdk.client.config.ZequentEnvironment}):
+     * {@code CONNECTOR_SERVICE_HOST}/{@code _PORT}/{@code _USE_PLAINTEXT} (and the same for
+     * {@code REMOTE_CONTROL_SERVICE}, {@code LIVE_DATA_SERVICE}, {@code MISSION_AUTONOMY_SERVICE}) and
+     * {@code ZQNT_CLIENT_TOKEN}. Nothing set is the local development stack on localhost. To add
+     * interceptors or override one service, use {@code builder().fromEnvironment()} instead.
+     */
+    @SuppressWarnings("deprecation")
+    public static ZequentClient fromEnvironment() {
+        return builder().fromEnvironment().build();
     }
 
     /**
@@ -164,6 +179,9 @@ public class ZequentClient implements AutoCloseable {
         private int telemetryHeartbeatTimeoutSeconds = 35;
         private int liveDataSchedulerThreads = 2;
         private ServiceConfig.LoadBalancerType defaultLoadBalancerType = ServiceConfig.LoadBalancerType.ROUND_ROBIN;
+        private String clientToken;
+        private final List<io.grpc.ClientInterceptor> interceptors = new ArrayList<>();
+        private java.util.function.Function<String, String> environment;
 
         // Service-specific builders
         private ServiceConfigBuilder remoteControlBuilder;
@@ -216,6 +234,49 @@ public class ZequentClient implements AutoCloseable {
             return this;
         }
 
+        /**
+         * The client credential to call the platform with — issued in the console (Access &amp;
+         * Integrations &rarr; Credentials, kind "client"). Without one, the {@code ZQNT_CLIENT_TOKEN}
+         * environment variable is used; with neither, the platform refuses every call.
+         */
+        public ZequentClientBuilder clientToken(String clientToken) {
+            this.clientToken = clientToken;
+            return this;
+        }
+
+        /**
+         * Adds an interceptor to every channel the client creates (all four services, unary and
+         * streaming calls) — for a host application whose credential is not one fixed token, e.g.
+         * one that forwards its own caller's token. Interceptors run in the order added, before the
+         * SDK's credential interceptor; an {@code authorization} header they set wins over
+         * {@link #clientToken(String)}.
+         */
+        public ZequentClientBuilder interceptor(io.grpc.ClientInterceptor interceptor) {
+            this.interceptors.add(java.util.Objects.requireNonNull(interceptor, "interceptor"));
+            return this;
+        }
+
+        /** Adds several interceptors; see {@link #interceptor(io.grpc.ClientInterceptor)}. */
+        public ZequentClientBuilder interceptors(java.util.Collection<? extends io.grpc.ClientInterceptor> interceptors) {
+            interceptors.forEach(this::interceptor);
+            return this;
+        }
+
+        /**
+         * Takes every service not configured explicitly on this builder, and the client token when
+         * none is given, from the environment (see {@link ZequentClient#fromEnvironment()}); unset
+         * variables fall back to the local development stack.
+         */
+        public ZequentClientBuilder fromEnvironment() {
+            return fromEnvironment(System::getenv);
+        }
+
+        /** {@link #fromEnvironment()} against another source of variables (tests, a loaded .env). */
+        public ZequentClientBuilder fromEnvironment(java.util.function.Function<String, String> environment) {
+            this.environment = java.util.Objects.requireNonNull(environment, "environment");
+            return this;
+        }
+
         public ZequentClientBuilder defaultLoadBalancerType(ServiceConfig.LoadBalancerType type) {
             this.defaultLoadBalancerType = type;
             return this;
@@ -243,10 +304,10 @@ public class ZequentClient implements AutoCloseable {
 
         public ZequentClient build() {
             // Build service configs with defaults
-            ServiceConfig remoteControlConfig = buildServiceConfig(remoteControlBuilder, "remote-control", 9091);
-            ServiceConfig missionAutonomyConfig = buildServiceConfig(missionAutonomyBuilder, "mission-autonomy", 9092);
-            ServiceConfig liveDataConfig = buildServiceConfig(liveDataBuilder, "live-data", 9093);
-            ServiceConfig connectorConfig = buildServiceConfig(connectorBuilder, "connector", 8010);
+            ServiceConfig remoteControlConfig = buildServiceConfig(remoteControlBuilder, "remote-control", ZequentEnvironment.REMOTE_CONTROL);
+            ServiceConfig missionAutonomyConfig = buildServiceConfig(missionAutonomyBuilder, "mission-autonomy", ZequentEnvironment.MISSION_AUTONOMY);
+            ServiceConfig liveDataConfig = buildServiceConfig(liveDataBuilder, "live-data", ZequentEnvironment.LIVE_DATA);
+            ServiceConfig connectorConfig = buildServiceConfig(connectorBuilder, "connector", ZequentEnvironment.CONNECTOR);
 
             // Build global config
             GrpcClientConfig globalConfig = GrpcClientConfig.builder()
@@ -264,14 +325,21 @@ public class ZequentClient implements AutoCloseable {
                     .telemetryHeartbeatTimeoutSeconds(telemetryHeartbeatTimeoutSeconds)
                     .liveDataSchedulerThreads(liveDataSchedulerThreads)
                     .defaultLoadBalancerType(defaultLoadBalancerType)
+                    .clientToken(ClientCredentials.resolve(clientToken != null && !clientToken.isBlank() || environment == null
+                            ? clientToken : environment.apply(ClientCredentials.ENV_VAR)))
+                    .interceptors(interceptors)
                     .build();
+            if (!globalConfig.hasCredentialSource()) {
+                log.warn("No client credential configured (ZQNT_CLIENT_TOKEN or builder().clientToken(...)): "
+                        + "the platform will refuse every call");
+            }
 
             // Create channels for each service
             List<ManagedChannel> channels = new ArrayList<>();
-            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig);
-            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig);
-            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig);
-            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig);
+            ManagedChannel remoteControlChannel = ChannelFactory.createChannel(remoteControlConfig, globalConfig);
+            ManagedChannel missionAutonomyChannel = ChannelFactory.createChannel(missionAutonomyConfig, globalConfig);
+            ManagedChannel liveDataChannel = ChannelFactory.createChannel(liveDataConfig, globalConfig);
+            ManagedChannel connectorChannel = ChannelFactory.createChannel(connectorConfig, globalConfig);
             channels.add(remoteControlChannel);
             channels.add(missionAutonomyChannel);
             channels.add(liveDataChannel);
@@ -286,19 +354,15 @@ public class ZequentClient implements AutoCloseable {
             return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, channels);
         }
 
-        private ServiceConfig buildServiceConfig(ServiceConfigBuilder builder, String serviceName, int defaultPort) {
+        private ServiceConfig buildServiceConfig(ServiceConfigBuilder builder, String serviceName, String envPrefix) {
             if (builder != null) {
                 return builder.buildInternal();
             }
-            // Default config
-            return ServiceConfig.builder()
-                    .serviceName(serviceName)
-                    .host("localhost")
-                    .port(defaultPort)
-                    .usePlaintext(true)
-                    .useStork(false)
-                    .loadBalancerType(defaultLoadBalancerType)
-                    .build();
+            if (environment != null) {
+                return ZequentEnvironment.fromEnvironment(environment, envPrefix, serviceName, defaultLoadBalancerType);
+            }
+            // Not configured: the service on the local development stack
+            return ZequentEnvironment.local(serviceName, defaultLoadBalancerType);
         }
     }
 
@@ -375,13 +439,7 @@ public class ZequentClient implements AutoCloseable {
         }
 
         private int getDefaultPort() {
-            return switch (serviceName) {
-                case "remote-control" -> 8002;
-                case "mission-autonomy" -> 8004;
-                case "live-data" -> 8003;
-                case "connector" -> 8010;
-                default -> 9001;
-            };
+            return ZequentEnvironment.LOCAL_PORTS.getOrDefault(serviceName, 9001);
         }
     }
 }
