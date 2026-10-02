@@ -127,7 +127,7 @@ class MissionAutonomyImplTest {
         assertTrue(mapped.getZones(0).getActive());
         assertTrue(mapped.getZones(0).hasPriority());
         assertEquals(0, mapped.getZones(0).getPriority());
-        assertEquals("sitaco-nfz", mapped.getZones(0).getConfig().getTemplateId());
+        assertEquals("zqnt-nfz", mapped.getZones(0).getConfig().getTemplateId());
 
         var mappedConfig = mapped.getZones(0).getConfig().getTemplateConfig();
         assertEquals("FORBIDDEN",
@@ -135,7 +135,7 @@ class MissionAutonomyImplTest {
         assertEquals(10,
                 mappedConfig.getFieldsOrThrow("warningDistance").getNumberValue());
         assertEquals(MissionNfzTestData.MISSION_ID,
-                mappedConfig.getFieldsOrThrow("sitacoBaseId").getStringValue());
+                mappedConfig.getFieldsOrThrow("baseId").getStringValue());
 
         var mappedPoints = mapped.getZones(0).getArea().getVerticesList();
         assertEquals(5, mappedPoints.size());
