@@ -9,6 +9,9 @@ import com.zqnt.utils.events.proto.MissionEvent;
 import com.zqnt.utils.events.proto.NotificationEvent;
 import com.zqnt.utils.events.proto.NotificationEventType;
 import com.zqnt.utils.events.proto.NotificationResponse;
+import com.zqnt.utils.execution.proto.SkillExecutionEventProto;
+import com.zqnt.utils.execution.proto.SkillExecutionEventTypeProto;
+import com.zqnt.utils.execution.proto.SkillExecutionStatusProto;
 import com.zqnt.utils.livedata.proto.*;
 import com.zqnt.utils.mission.proto.MissionStatus;
 import com.zqnt.utils.mission.proto.MissionType;
@@ -108,5 +111,32 @@ class LiveDataMapperTest {
         assertEquals(NotificationEventType.NOTIFICATION_EVENT_MISSION, mapped.getEventType());
         assertEquals("mission-1", mapped.getMissionEvent().getMissionId());
         assertEquals(MissionStatus.MISSION_STATUS_ACTIVE, mapped.getMissionEvent().getStatus());
+    }
+
+    @Test
+    void mapsSkillExecutionProgressNotification() {
+        NotificationResponse proto = NotificationResponse.newBuilder()
+                .setSn("UAV-1")
+                .setTimestamp(NOW)
+                .setEvent(NotificationEvent.newBuilder().setSkillExecution(
+                        SkillExecutionEventProto.newBuilder()
+                                .setEventId("event-1")
+                                .setExecutionId("execution-1")
+                                .setAssetSn("UAV-1")
+                                .setType(SkillExecutionEventTypeProto
+                                        .SKILL_EXECUTION_EVENT_TYPE_NODE_PROGRESS)
+                                .setExecutionStatus(SkillExecutionStatusProto
+                                        .SKILL_EXECUTION_STATUS_RUNNING)
+                                .setNodeId("takeoff")
+                                .setProgress(42.5f)
+                                .setOccurredAt(NOW)))
+                .build();
+
+        StreamNotificationResponse mapped = LiveDataMapper.INSTANCE.fromProtoNotificationResponse(proto);
+
+        assertEquals(NotificationEventType.NOTIFICATION_EVENT_CAPABILITY_EXECUTION, mapped.getEventType());
+        assertEquals("execution-1", mapped.getSkillExecutionEvent().getExecutionId());
+        assertEquals("takeoff", mapped.getSkillExecutionEvent().getNodeId());
+        assertEquals(42.5f, mapped.getSkillExecutionEvent().getProgress());
     }
 }

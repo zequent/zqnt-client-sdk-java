@@ -21,6 +21,15 @@
     @jakarta.inject.Inject *;
 }
 
+# The Jandex index (META-INF/jandex.idx) is built BEFORE ProGuard runs, so every class it names
+# must keep that name: Quarkus loads classes by the indexed name. Seen live 2026-10-01: the private
+# ClientCredentials$BearerInterceptor became ClientCredentials$a, and every Quarkus app using the SDK
+# failed to start with ClassNotFoundException, because quarkus-grpc registers each indexed
+# io.grpc.ClientInterceptor. Keep every class name in the SDK (it is a public library; renaming
+# private classes hides nothing), and keep interceptors whole.
+-keepnames class com.zqnt.sdk.client.**
+-keep class com.zqnt.sdk.client.** implements io.grpc.ClientInterceptor { *; }
+
 -keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod,MethodParameters,Exceptions
 
 # Do not expose local source paths in stack traces.

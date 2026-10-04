@@ -7,7 +7,7 @@ import lombok.Data;
  * Configuration for an individual gRPC service.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 public class ServiceConfig {
 
     private String serviceName;

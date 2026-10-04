@@ -42,7 +42,74 @@ The **Zequent Client SDK** is a **Java library/dependency** that customers add t
 </dependency>
 ```
 
-### 2. Setup for Your Framework
+### 2. Get a client credential
+
+The platform refuses every call that carries no credential. An organization administrator issues
+one in the console under **Deploy → Access & Integrations → Credentials** (kind **client**). It is
+shown once, belongs to that one organization, and reaches only that organization's assets,
+Applications and runs — never users, organizations or other administration.
+
+Hand it to the SDK in one of three ways (first one set wins):
+
+```java
+ZequentClient client = ZequentClient.builder().clientToken(token)   // 1. explicitly
+        .connector().host("core.example.com").port(8010).done()
+        .build();
+```
+
+```properties
+zequent.client-token=${ZQNT_CLIENT_TOKEN}   # 2. Quarkus configuration
+```
+
+```bash
+export ZQNT_CLIENT_TOKEN=eyJhbGciOiJFZERTQSIs...   # 3. the environment
+```
+
+It is sent as `authorization: Bearer <token>` on every call. A refusal surfaces as a
+`StatusRuntimeException` whose message says what to do: `UNAUTHENTICATED` — no credential, or an
+expired/revoked one; `PERMISSION_DENIED` — the call is outside what a client credential may do (an
+asset of another organization, or an administrative RPC). Neither is retried.
+
+#### Local development and deployment: one set of environment variables
+
+`ZequentClient.fromEnvironment()` (or `builder().fromEnvironment()` to add interceptors or pin one
+service) reads the variables every Zequent client SDK — Java, Python, Go — reads; the Quarkus
+integration maps the same names.
+
+| Variable | Local default (nothing set) |
+|---|---|
+| `CONNECTOR_SERVICE_HOST` / `_PORT` / `_USE_PLAINTEXT` | `localhost` / `8010` / `true` |
+| `REMOTE_CONTROL_SERVICE_HOST` / `_PORT` / `_USE_PLAINTEXT` | `localhost` / `8002` / `true` |
+| `LIVE_DATA_SERVICE_HOST` / `_PORT` / `_USE_PLAINTEXT` | `localhost` / `8003` / `true` |
+| `MISSION_AUTONOMY_SERVICE_HOST` / `_PORT` / `_USE_PLAINTEXT` | `localhost` / `8004` / `true` |
+| `ZQNT_CLIENT_TOKEN` | none — issue one in your local console too |
+
+With nothing set, a developer reaches the local stack (`quarkus:dev` or `docker-compose.local.yml`).
+A deployment sets the hosts, `_USE_PLAINTEXT=false` for TLS against the system trust store whenever
+the traffic leaves a private network, and `ZQNT_CLIENT_TOKEN` from its secret store — never from a
+committed file. There is deliberately no built-in development credential: the local platform
+refuses anonymous calls just like a deployment does.
+
+#### A credential that is not one fixed token
+
+A service that forwards its own caller's token, or rotates a short-lived one, registers a gRPC
+`ClientInterceptor` instead. It is put on every channel the SDK creates (all four services, unary
+and streaming calls) and runs before the SDK's own credential interceptor: an `authorization`
+header it sets wins, and the fixed client token is then not sent.
+
+```java
+ZequentClient client = ZequentClient.builder().interceptor(myAuthInterceptor) /* ... */ .build();
+```
+
+In Quarkus, mark a `ClientInterceptor` bean with `@ZequentClientInterceptor` and the injected
+`ZequentClient` picks it up:
+
+```java
+@Produces @ZequentClientInterceptor
+ClientInterceptor zequentCredentials(MyAuthInterceptor interceptor) { return interceptor; }
+```
+
+### 3. Setup for Your Framework
 
 #### 🔹 Quarkus (Automatic via CDI)
 

@@ -2,9 +2,7 @@ package com.zqnt.sdk.client.remotecontrol.application.impl;
 
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
-import com.zqnt.sdk.client.remotecontrol.domains.CapabilityDescriptor;
-import com.zqnt.sdk.client.remotecontrol.domains.CapabilitySnapshot;
-import com.zqnt.sdk.client.remotecontrol.domains.CapabilityTargetType;
+import com.zqnt.sdk.client.remotecontrol.domains.*;
 import com.zqnt.utils.core.ProtobufHelpers;
 import com.zqnt.utils.devicecontrol.proto.AssetCapabilitiesResponse;
 
@@ -40,7 +38,44 @@ final class CapabilityMapper {
                 .schemaVersion(source.hasSchemaVersion() ? source.getSchemaVersion() : null)
                 .metadata(source.getMetadataMap()).constraints(toMap(source.getConstraints()))
                 .inputSchema(toMap(source.getInputSchema())).outputSchema(toMap(source.getOutputSchema()))
+                .errors(source.getErrorsList().stream().map(this::fromProto).toList())
+                .events(source.getEventsList().stream().map(this::fromProto).toList())
+                .requirements(source.hasRequirements() ? fromProto(source.getRequirements()) : null)
+                .skillId(source.hasSkillId() ? source.getSkillId() : null)
+                .source(capabilitySource(source.getSource()))
+                .provider(source.hasProvider() ? source.getProvider() : null)
                 .build();
+    }
+
+    private CapabilityErrorDescriptor fromProto(com.zqnt.utils.devicecontrol.proto.CapabilityErrorProto source) {
+        return CapabilityErrorDescriptor.builder().code(source.getCode())
+                .description(source.hasDescription() ? source.getDescription() : null).build();
+    }
+
+    private CapabilityEventDescriptor fromProto(com.zqnt.utils.devicecontrol.proto.CapabilityEventProto source) {
+        return CapabilityEventDescriptor.builder().name(source.getName())
+                .description(source.hasDescription() ? source.getDescription() : null)
+                .payloadSchema(toMap(source.getPayloadSchema())).build();
+    }
+
+    private CapabilityRequirements fromProto(com.zqnt.utils.devicecontrol.proto.CapabilityRequirementsProto source) {
+        return CapabilityRequirements.builder()
+                .assetTypes(source.getAssetTypesList()).payloads(source.getPayloadsList())
+                .runtimeFeatures(source.getRuntimeFeaturesList()).properties(toMap(source.getProperties()))
+                .build();
+    }
+
+    private CapabilitySource capabilitySource(com.zqnt.utils.devicecontrol.proto.CapabilitySourceProto source) {
+        return switch (source) {
+            case CAPABILITY_SOURCE_BUILT_IN -> CapabilitySource.BUILT_IN;
+            case CAPABILITY_SOURCE_EDGE_ADAPTER -> CapabilitySource.EDGE_ADAPTER;
+            case CAPABILITY_SOURCE_RUNTIME -> CapabilitySource.RUNTIME;
+            case CAPABILITY_SOURCE_USER -> CapabilitySource.USER;
+            case CAPABILITY_SOURCE_APPLICATION -> CapabilitySource.APPLICATION;
+            case CAPABILITY_SOURCE_INTEGRATION -> CapabilitySource.INTEGRATION;
+            case CAPABILITY_SOURCE_AI_GENERATED -> CapabilitySource.AI_GENERATED;
+            default -> CapabilitySource.UNSPECIFIED;
+        };
     }
 
     private CapabilityTargetType targetType(
