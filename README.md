@@ -146,9 +146,57 @@ public class DroneService {
 }
 ```
 
-### Dynamic payload commands
+### Commands (Zequent 3.0)
 
-Dynamic payload commands run through `remoteControl()`. Discover the current capabilities first:
+On a 3.0 platform every asset is commanded the same way: list what it can do, then run a command by
+its dotted id with a JSON object of params. There are no typed methods per command.
+
+```java
+Commands commands = zequent.commands();
+
+CapabilitySet capabilities = commands.listCapabilities("DOCK-1").join();
+capabilities.getCapabilitiesList().forEach(c ->
+        System.out.println(c.getCommandId() + " " + c.getSafety().getRisk() + " " + c.getInputSchema()));
+
+CommandResult takeoff = commands.executeCommand("DOCK-1", "flight.takeoff",
+        Map.of("latitude", 47.7752, "longitude", 9.2658, "altitude", 40)).join();
+
+try (CommandWatch watch = commands.watchCommand(takeoff.getCommandExecutionId(),
+        event -> System.out.println(event.getState() + " " + event.getProgress()))) {
+    watch.done().get(5, TimeUnit.MINUTES);
+}
+
+commands.executeCommand("DOCK-1", "navigation.go_to",
+        Map.of("latitude", 47.7760, "longitude", 9.2671, "altitude", 60)).join();
+```
+
+- `listCapabilities(assetSn)`: the asset's `CapabilitySet`: command ids, input/output JSON
+  schemas, risk, the errors and events each command declares.
+- `executeCommand(assetSn, commandId, params)`: returns the `CommandResult`: `ACCEPTED`/`RUNNING`
+  with a `commandExecutionId` while it is underway, or the final state. `executeCommand(CommandRequest)`
+  adds a target, a timeout, a reason (required for CRITICAL commands), an idempotency key and the
+  no-fly zone override.
+- `watchCommand(commandExecutionId, onEvent)` / `watchAsset(assetSn, onEvent)`: command events
+  from now on; `done()` completes when the run ends or the watch is closed. Start the watch before
+  the run can finish, or read the final state from `executeCommand`.
+- `cancelCommand(commandExecutionId, reason)`.
+- Errors: a refused call or a command rejected before it started fails the future with a
+  `CommandException` (`getCategory()`, `getCode()` such as `command.invalid_params`, `getStatus()`).
+  A command that started and failed is a `CommandResult` with state `FAILED` and its error.
+- `navigation.go_to` altitude is metres above the **takeoff point**. Leave a param out when you have
+  no value; never send `0` for "not given". `null` map values are left out.
+- `Structs.toMap(result.getResult())` turns a result or event payload into a plain map.
+
+`commands()` uses the remote-control service connection, credential and interceptors already
+configured for the client; nothing else to set up.
+
+**Upgrading from 2.x:** the typed methods on `remoteControl()` (`takeoff`, `goTo`, `openCover`, ...)
+and `getCapabilities`/`sendCustomCommand` are deprecated and keep working against 2.x platforms.
+[MIGRATION.md](MIGRATION.md) maps every typed call to its command id and params.
+
+### Dynamic payload commands (2.x)
+
+On a 2.x platform, dynamic payload commands run through `remoteControl()`. Discover the current capabilities first:
 their target reference is the authoritative routing value for the command.
 
 The client flow is:
@@ -275,7 +323,8 @@ mvn deploy
 
 This SDK provides:
 - `ZequentClient` - Main client interface
-- Service interfaces (RemoteControl, MissionAutonomy, LiveData, Connector)
+- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, watch, cancel)
+- Service interfaces (RemoteControl (2.x typed commands, deprecated), MissionAutonomy, LiveData, Connector)
 - Request/Response models
 - Auto-configuration via CDI (Quarkus)
 - gRPC channel management
