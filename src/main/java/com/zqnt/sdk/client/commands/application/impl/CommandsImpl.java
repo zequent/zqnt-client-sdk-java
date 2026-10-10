@@ -14,12 +14,16 @@ import com.zqnt.protos.control.v3.ExecuteCommandResponse;
 import com.zqnt.protos.control.v3.GetCapabilitiesRequest;
 import com.zqnt.protos.control.v3.GetCapabilitiesResponse;
 import com.zqnt.protos.control.v3.RemoteControlServiceGrpc;
+import com.zqnt.protos.control.v3.StreamManualControlRequest;
+import com.zqnt.protos.control.v3.StreamManualControlResponse;
 import com.zqnt.protos.control.v3.WatchCommandEventsRequest;
 import com.zqnt.protos.control.v3.WatchCommandEventsResponse;
+import com.zqnt.protos.edge.v3.ManualControlInput;
 import com.zqnt.sdk.client.commands.application.Commands;
 import com.zqnt.sdk.client.commands.domains.CommandException;
 import com.zqnt.sdk.client.commands.domains.CommandRequest;
 import com.zqnt.sdk.client.commands.domains.CommandWatch;
+import com.zqnt.sdk.client.commands.domains.ManualControlStream;
 import com.zqnt.sdk.client.commands.domains.Structs;
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.grpc.GrpcResilience;
@@ -171,6 +175,15 @@ public class CommandsImpl implements Commands {
         return watch(WatchCommandEventsRequest.newBuilder().setAsset(AssetRef.newBuilder().setSn(assetSn)).build(), onEvent);
     }
 
+    @Override
+    public ManualControlStream streamManualControl(String assetSn) {
+        requireText(assetSn, "assetSn");
+        log.info("StreamManualControl: asset={}", assetSn);
+        ManualControlSession session = new ManualControlSession(assetSn);
+        session.requests = stub.streamManualControl(session);
+        return session;
+    }
+
     private CommandWatch watch(WatchCommandEventsRequest request, Consumer<CommandEvent> onEvent) {
         Objects.requireNonNull(onEvent, "onEvent");
         CommandWatch watch = new CommandWatch();
@@ -227,6 +240,69 @@ public class CommandsImpl implements Commands {
             }).exceptionallyCompose(failure -> CompletableFuture.failedFuture(CommandException.from(failure)));
         } catch (RuntimeException circuitOpen) {
             return CompletableFuture.failedFuture(CommandException.from(circuitOpen));
+        }
+    }
+
+    private static final class ManualControlSession
+            implements ManualControlStream, StreamObserver<StreamManualControlResponse> {
+        private final String assetSn;
+        private final CompletableFuture<Long> done = new CompletableFuture<>();
+        private StreamObserver<StreamManualControlRequest> requests;
+        private boolean named;
+        private boolean closed;
+
+        ManualControlSession(String assetSn) {
+            this.assetSn = assetSn;
+        }
+
+        @Override
+        public String assetSn() {
+            return assetSn;
+        }
+
+        @Override
+        public synchronized void send(ManualControlInput input) {
+            Objects.requireNonNull(input, "input");
+            if (closed || done.isDone()) {
+                throw new IllegalStateException("the manual control stream on " + assetSn + " is over");
+            }
+            var request = StreamManualControlRequest.newBuilder().setInput(input);
+            if (!named) {
+                request.setAsset(AssetRef.newBuilder().setSn(assetSn));
+                named = true;
+            }
+            requests.onNext(request.build());
+        }
+
+        @Override
+        public CompletableFuture<Long> done() {
+            return done;
+        }
+
+        @Override
+        public synchronized void close() {
+            if (closed) return;
+            closed = true;
+            if (!done.isDone()) requests.onCompleted();
+        }
+
+        @Override
+        public void onNext(StreamManualControlResponse response) {
+            if (response.hasError()) {
+                done.completeExceptionally(CommandException.of(response.getError(), "manual control on " + assetSn + " failed"));
+            } else {
+                done.complete(response.getAcceptedInputs());
+            }
+        }
+
+        @Override
+        public void onError(Throwable failure) {
+            done.completeExceptionally(CommandException.from(failure));
+        }
+
+        @Override
+        public void onCompleted() {
+            done.completeExceptionally(CommandException.watchEnded("the platform ended manual control on " + assetSn + " without an answer"));
         }
     }
 

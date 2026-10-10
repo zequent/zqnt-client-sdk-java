@@ -6,6 +6,7 @@ import com.zqnt.protos.capability.v3.CommandResult;
 import com.zqnt.sdk.client.commands.domains.CommandException;
 import com.zqnt.sdk.client.commands.domains.CommandRequest;
 import com.zqnt.sdk.client.commands.domains.CommandWatch;
+import com.zqnt.sdk.client.commands.domains.ManualControlStream;
 
 import java.time.Duration;
 import java.util.Map;
@@ -64,4 +65,10 @@ public interface Commands {
 
     /** Events of every command on the asset from now on, until the watch is closed. */
     CommandWatch watchAsset(String assetSn, Consumer<CommandEvent> onEvent);
+
+    /**
+     * Opens a stick-input session on the asset. One session controls one asset; inputs go out in the
+     * order they are sent, without a deadline, until the session is closed.
+     */
+    ManualControlStream streamManualControl(String assetSn);
 }

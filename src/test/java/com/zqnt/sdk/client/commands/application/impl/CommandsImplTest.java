@@ -20,12 +20,16 @@ import com.zqnt.protos.control.v3.ExecuteCommandResponse;
 import com.zqnt.protos.control.v3.GetCapabilitiesRequest;
 import com.zqnt.protos.control.v3.GetCapabilitiesResponse;
 import com.zqnt.protos.control.v3.RemoteControlServiceGrpc;
+import com.zqnt.protos.control.v3.StreamManualControlRequest;
+import com.zqnt.protos.control.v3.StreamManualControlResponse;
 import com.zqnt.protos.control.v3.WatchCommandEventsRequest;
 import com.zqnt.protos.control.v3.WatchCommandEventsResponse;
+import com.zqnt.protos.edge.v3.ManualControlInput;
 import com.zqnt.sdk.client.commands.application.Commands;
 import com.zqnt.sdk.client.commands.domains.CommandException;
 import com.zqnt.sdk.client.commands.domains.CommandRequest;
 import com.zqnt.sdk.client.commands.domains.CommandWatch;
+import com.zqnt.sdk.client.commands.domains.ManualControlStream;
 import com.zqnt.sdk.client.commands.domains.Structs;
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.config.ServiceConfig;
@@ -65,6 +69,8 @@ class CommandsImplTest {
     private final List<String> received = new CopyOnWriteArrayList<>();
     private final AtomicReference<Status> refuseWith = new AtomicReference<>();
     private final AtomicReference<CommandResult> answerWith = new AtomicReference<>();
+    private final List<StreamManualControlRequest> manualInputs = new CopyOnWriteArrayList<>();
+    private final AtomicReference<Error> manualAnswerError = new AtomicReference<>();
     private Server server;
     private ManagedChannel channel;
     private Commands commands;
@@ -352,6 +358,65 @@ class CommandsImplTest {
         assertThrows(IllegalArgumentException.class, () -> commands.listCapabilities(null));
     }
 
+    @Test
+    void streamsStickInputNamingTheAssetOnce() throws Exception {
+        ManualControlStream stream = commands.streamManualControl("drone-1");
+        stream.send(0.1f, -0.2f, 0.3f, 0.5f);
+        stream.send(ManualControlInput.newBuilder().setThrottle(0.4f).setGimbalPitch(-30f).build());
+        stream.close();
+
+        assertEquals(2L, stream.done().get(5, TimeUnit.SECONDS));
+        assertEquals("drone-1", manualInputs.get(0).getAsset().getSn());
+        assertEquals(0.1f, manualInputs.get(0).getInput().getRoll(), 1e-6);
+        assertEquals(0.5f, manualInputs.get(0).getInput().getThrottle(), 1e-6);
+        assertFalse(manualInputs.get(1).hasAsset());
+        assertEquals(-30f, manualInputs.get(1).getInput().getGimbalPitch(), 1e-6);
+    }
+
+    @Test
+    void aRefusedManualControlSessionFailsAndRefusesFurtherInput() {
+        refuseWith.set(Status.UNAVAILABLE.withDescription("no adapter for drone-1"));
+
+        ManualControlStream stream = commands.streamManualControl("drone-1");
+        stream.send(0f, 0f, 0f, 0.5f);
+
+        CommandException failure = failureOf(() -> stream.done().join());
+        assertEquals(ErrorCategory.ERROR_CATEGORY_SERVICE, failure.getCategory());
+        assertEquals(Status.Code.UNAVAILABLE, failure.getStatus());
+        assertThrows(IllegalStateException.class, () -> stream.send(0f, 0f, 0f, 0f));
+        stream.close();
+    }
+
+    @Test
+    void anErrorInTheManualControlAnswerFailsTheSession() {
+        manualAnswerError.set(Error.newBuilder()
+                .setCategory(ErrorCategory.ERROR_CATEGORY_PRECONDITION_FAILED)
+                .setCode("flight.manual.not_entered")
+                .setMessage("enter manual control first")
+                .build());
+
+        ManualControlStream stream = commands.streamManualControl("drone-1");
+        stream.send(0f, 0f, 0f, 0.5f);
+        stream.close();
+
+        CommandException failure = failureOf(() -> stream.done().join());
+        assertEquals(ErrorCategory.ERROR_CATEGORY_PRECONDITION_FAILED, failure.getCategory());
+        assertEquals("flight.manual.not_entered", failure.getCode());
+        assertEquals("enter manual control first", failure.getMessage());
+    }
+
+    @Test
+    void manualControlNeedsAnAssetAndRejectsInputAfterClose() {
+        assertThrows(IllegalArgumentException.class, () -> commands.streamManualControl(" "));
+
+        ManualControlStream stream = commands.streamManualControl("drone-1");
+        stream.close();
+        stream.close();
+
+        assertThrows(IllegalStateException.class, () -> stream.send(0f, 0f, 0f, 0f));
+        assertEquals(0L, stream.done().join());
+    }
+
     private static CommandException failureOf(Runnable call) {
         CompletionException failure = assertThrows(CompletionException.class, call::run);
         return assertInstanceOf(CommandException.class, failure.getCause());
@@ -426,6 +491,45 @@ class CommandsImplTest {
             }
             openWatch.set(observer);
             assetWatches.add(observer);
+        }
+
+        @Override
+        public StreamObserver<StreamManualControlRequest> streamManualControl(StreamObserver<StreamManualControlResponse> observer) {
+            return new StreamObserver<>() {
+                private String sn;
+                private boolean failed;
+
+                @Override
+                public void onNext(StreamManualControlRequest request) {
+                    if (failed) return;
+                    if (sn == null) {
+                        sn = request.getAsset().getSn();
+                        if (sn.isBlank()) {
+                            failed = true;
+                            observer.onError(Status.INVALID_ARGUMENT.withDescription("asset.sn is required").asRuntimeException());
+                            return;
+                        }
+                        if (refused(observer)) {
+                            failed = true;
+                            return;
+                        }
+                    }
+                    manualInputs.add(request);
+                }
+
+                @Override
+                public void onError(Throwable failure) {
+                }
+
+                @Override
+                public void onCompleted() {
+                    if (failed) return;
+                    var response = StreamManualControlResponse.newBuilder().setAcceptedInputs(manualInputs.size());
+                    if (manualAnswerError.get() != null) response.setError(manualAnswerError.get());
+                    observer.onNext(response.build());
+                    observer.onCompleted();
+                }
+            };
         }
 
         private boolean refused(StreamObserver<?> observer) {

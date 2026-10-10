@@ -15,6 +15,8 @@ import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
 import com.zqnt.sdk.client.missionautonomy.application.impl.MissionAutonomyImpl;
 import com.zqnt.sdk.client.remotecontrol.application.RemoteControl;
 import com.zqnt.sdk.client.remotecontrol.application.impl.RemoteControlImpl;
+import com.zqnt.sdk.client.telemetry.application.Telemetry;
+import com.zqnt.sdk.client.telemetry.application.impl.TelemetryImpl;
 
 import io.grpc.ManagedChannel;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,7 @@ public class ZequentClient implements AutoCloseable {
     private final LiveData liveData;
     private final Connector connector;
     private final Commands commands;
+    private final Telemetry telemetry;
     private final List<ManagedChannel> channels;
 
 
@@ -51,13 +54,14 @@ public class ZequentClient implements AutoCloseable {
      */
     ZequentClient(GrpcClientConfig config, RemoteControl remoteControl,
                   MissionAutonomy missionAutonomy, LiveData liveData, Connector connector,
-                  Commands commands, List<ManagedChannel> channels) {
+                  Commands commands, Telemetry telemetry, List<ManagedChannel> channels) {
         this.config = config;
         this.remoteControl = remoteControl;
         this.missionAutonomy = missionAutonomy;
         this.liveData = liveData;
         this.connector = connector;
         this.commands = commands;
+        this.telemetry = telemetry;
         this.channels = channels;
         log.info("ZequentClient initialized with {} channels", channels.size());
     }
@@ -96,8 +100,16 @@ public class ZequentClient implements AutoCloseable {
     }
 
     /**
+     * Live telemetry of Zequent 3.0: samples and source status of assets, as one stream. Needs a 3.0
+     * platform; {@link #liveData()} streams 2.x telemetry.
+     */
+    public Telemetry telemetry() {
+        return telemetry;
+    }
+
+    /**
      * The 2.x typed remote control (takeoff, goTo, openCover, ...). Kept for 2.x platforms; on 3.0
-     * use {@link #commands()}. Its manual stick input session stays the way to fly by hand.
+     * use {@link #commands()}, and {@code commands().streamManualControl} for stick input.
      *
      * @return RemoteControl interface for flight operations, manual control, and dock operations
      */
@@ -365,8 +377,10 @@ public class ZequentClient implements AutoCloseable {
             LiveData liveData = LiveDataImpl.create(globalConfig, liveDataChannel);
             Connector connector = ConnectorImpl.create(globalConfig, connectorChannel);
             Commands commands = CommandsImpl.create(globalConfig, remoteControlChannel);
+            Telemetry telemetry = TelemetryImpl.create(globalConfig, liveDataChannel);
 
-            return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, commands, channels);
+            return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, commands,
+                    telemetry, channels);
         }
 
         private ServiceConfig buildServiceConfig(ServiceConfigBuilder builder, String serviceName, String envPrefix) {

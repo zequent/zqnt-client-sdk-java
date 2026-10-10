@@ -197,6 +197,45 @@ try (CommandWatch watch = commands.watchCommand(goTo.getCommandExecutionId(),
 `commands()` uses the remote-control service connection, credential and interceptors already
 configured for the client; nothing else to set up.
 
+### Manual control (Zequent 3.0)
+
+Stick input goes over one stream per asset. Put the asset in manual control first, then send
+inputs (roll, pitch, yaw, throttle from -1 to 1) at your control rate:
+
+```java
+commands.executeAndWait("DRONE-1", "flight.manual.enter", Map.of(), Duration.ofSeconds(30)).join();
+try (ManualControlStream stick = commands.streamManualControl("DRONE-1")) {
+    stick.send(0f, 0.2f, 0f, 0.5f);
+    stick.send(ManualControlInput.newBuilder().setThrottle(0.5f).setGimbalPitch(-30f).build());
+}
+```
+
+The first input names the asset; one stream controls one asset. `close()` ends the session and
+`done()` completes with the number of inputs the platform passed on to the asset. `done()` fails
+with a `CommandException` when the platform refuses the session (no adapter reachable, an asset of
+another organization) or the adapter drops it; `send` then throws `IllegalStateException`. Leave
+manual control with `flight.manual.exit`.
+
+### Telemetry (Zequent 3.0)
+
+```java
+try (TelemetryWatch watch = zequent.telemetry().watchTelemetry(List.of("DOCK-1"), Duration.ofSeconds(1),
+        sample -> System.out.println(sample.getPosition() + " " + sample.getBatteryPercent()),
+        status -> System.out.println(status.getAsset().getSn() + " " + status.getState()))) {
+    watch.done().get(10, TimeUnit.MINUTES);
+}
+```
+
+`watchTelemetry(assetSns, minInterval, onSample, onSourceStatus)` streams `TelemetrySample`s from
+the live-data service: the shared fields (position, relative altitude, heading, speeds, battery) and
+the device-specific `details` under the keys of the capabilities' `telemetry_fields`. No asset
+watches every asset of the caller's organization; a dock's serial includes its drone. `minInterval`
+keeps at most one sample per asset per interval (`null` = every sample). `onSourceStatus` hears each
+watched asset's state first, then each change to online, stale or no data. The platform sends
+heartbeats on a quiet stream; when neither a sample nor a heartbeat arrives within
+`telemetryHeartbeatTimeoutSeconds` the watch fails with a retryable `SERVICE` `CommandException`.
+A watch does not reconnect: watch again. `liveData().streamTelemetryData` stays the 2.x stream.
+
 **Upgrading from 2.x:** the typed methods on `remoteControl()` (`takeoff`, `goTo`, `openCover`, ...)
 and `getCapabilities`/`sendCustomCommand` are deprecated and keep working against 2.x platforms.
 [MIGRATION.md](MIGRATION.md) maps every typed call to its command id and params.
@@ -330,7 +369,8 @@ mvn deploy
 
 This SDK provides:
 - `ZequentClient` - Main client interface
-- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, executeAndWait, watch, cancel)
+- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, executeAndWait, watch, cancel, streamManualControl)
+- `telemetry()`: 3.0 telemetry samples and source status (watchTelemetry)
 - Service interfaces (RemoteControl (2.x typed commands, deprecated), MissionAutonomy, LiveData, Connector)
 - Request/Response models
 - Auto-configuration via CDI (Quarkus)

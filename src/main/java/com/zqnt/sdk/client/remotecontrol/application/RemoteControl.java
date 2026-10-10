@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * The 2.x typed remote control, kept for 2.x platforms. Every typed command is deprecated: on a 3.0
  * platform use {@link com.zqnt.sdk.client.ZequentClient#commands()} with the command id and params
- * (see MIGRATION.md). {@link #startManualControlInput} is not deprecated; it stays the way to fly by hand.
+ * (see MIGRATION.md), and stick input with {@code commands().streamManualControl(assetSn)}.
  */
 public interface RemoteControl {
 
@@ -39,6 +39,7 @@ public interface RemoteControl {
     CompletableFuture<RemoteControlResponse> enterManualControl(ManualControlRequest request);
     @Deprecated(since = "3.0")
     CompletableFuture<RemoteControlResponse> exitManualControl(ManualControlRequest request);
+    @Deprecated(since = "3.0")
 	ManualControlInputSession startManualControlInput(String sn, String assetId);
 
     // Dock ops

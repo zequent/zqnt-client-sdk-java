@@ -11,7 +11,8 @@ CommandResult result = zequent.commands()
 ```
 
 The 2.x typed methods on `zequent.remoteControl()` still work against 2.x platforms and are
-deprecated. `remoteControl().startManualControlInput(...)` (stick input) is not deprecated.
+deprecated. `remoteControl().startManualControlInput(...)` stays for stick input on 2.x platforms;
+on 3.0 use `commands().streamManualControl(...)`.
 
 ## Typed call → command id + params
 
@@ -75,3 +76,22 @@ zequent.commands().executeCommand(CommandRequest.builder()
 
 `reason` is required for commands whose capability is `COMMAND_RISK_CRITICAL`. The same
 `idempotencyKey` sent twice runs the command once.
+
+## Manual control
+
+| 2.x | 3.0 |
+|---|---|
+| `remoteControl().startManualControlInput(sn, assetId)` | `commands().streamManualControl(assetSn)` |
+| `session.sendInput(ManualControlInput)` | `stick.send(roll, pitch, yaw, throttle)` or `stick.send(edge.v3.ManualControlInput)` (with `gimbalPitch`) |
+| `session.complete()` (a `RemoteControlResponse`) | `stick.close()`, then `stick.done()`: the number of inputs passed on to the asset |
+| a broken stream | `stick.done()` fails with a `CommandException`; `send` throws `IllegalStateException` |
+
+Enter and leave manual control with the commands `flight.manual.enter` and `flight.manual.exit`.
+
+## Telemetry
+
+| 2.x | 3.0 |
+|---|---|
+| `liveData().streamTelemetryData(request, onData)` | `telemetry().watchTelemetry(assetSns, minInterval, onSample, onSourceStatus)` |
+| per-vendor telemetry types | `TelemetrySample`: position, relative altitude, heading, speeds, battery; the rest in `details` under the capabilities' `telemetry_fields` |
+| reconnects on its own | fails `done()` on a refusal, a dropped stream or missing heartbeats; watch again |

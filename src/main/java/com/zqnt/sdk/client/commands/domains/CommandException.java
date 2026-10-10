@@ -51,6 +51,15 @@ public final class CommandException extends RuntimeException {
         return new CommandException(message, category, error.getCode(), error.getRetryable(), null, result, null);
     }
 
+    /** An error the platform answered with outside a command result; without a category it counts as {@code SERVICE}. */
+    public static CommandException of(Error error, String fallbackMessage) {
+        String message = error.getMessage().isBlank() ? fallbackMessage : error.getMessage();
+        ErrorCategory category = error.getCategory() == ErrorCategory.ERROR_CATEGORY_UNSPECIFIED
+                ? ErrorCategory.ERROR_CATEGORY_SERVICE
+                : error.getCategory();
+        return new CommandException(message, category, error.getCode(), error.getRetryable(), null, null, null);
+    }
+
     public static CommandException waitTimedOut(String message) {
         return new CommandException(message, ErrorCategory.ERROR_CATEGORY_TIMEOUT, "", false, null, null, null);
     }
