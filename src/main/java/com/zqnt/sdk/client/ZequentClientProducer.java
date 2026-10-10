@@ -1,5 +1,6 @@
 package com.zqnt.sdk.client;
 
+import com.zqnt.sdk.client.commands.application.impl.CommandsImpl;
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.config.ZequentClientConfigFactory;
 import com.zqnt.sdk.client.connector.application.Connector;
@@ -85,7 +86,8 @@ public class ZequentClientProducer {
         Connector connector = ConnectorImpl.create(config, connectorChannel);
 
         // Create and return ZequentClient
-        return new ZequentClient(config, remoteControl, missionAutonomy, liveData, connector, channels);
+        return new ZequentClient(config, remoteControl, missionAutonomy, liveData, connector,
+                CommandsImpl.create(config, remoteControlChannel), channels);
     }
 
     public void disposeZequentClient(@Disposes ZequentClient client) {

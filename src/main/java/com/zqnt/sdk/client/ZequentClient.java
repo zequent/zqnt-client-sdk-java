@@ -1,5 +1,7 @@
 package com.zqnt.sdk.client;
 
+import com.zqnt.sdk.client.commands.application.Commands;
+import com.zqnt.sdk.client.commands.application.impl.CommandsImpl;
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.config.ServiceConfig;
 import com.zqnt.sdk.client.config.ZequentEnvironment;
@@ -37,6 +39,7 @@ public class ZequentClient implements AutoCloseable {
     private final MissionAutonomy missionAutonomy;
     private final LiveData liveData;
     private final Connector connector;
+    private final Commands commands;
     private final List<ManagedChannel> channels;
 
 
@@ -48,12 +51,13 @@ public class ZequentClient implements AutoCloseable {
      */
     ZequentClient(GrpcClientConfig config, RemoteControl remoteControl,
                   MissionAutonomy missionAutonomy, LiveData liveData, Connector connector,
-                  List<ManagedChannel> channels) {
+                  Commands commands, List<ManagedChannel> channels) {
         this.config = config;
         this.remoteControl = remoteControl;
         this.missionAutonomy = missionAutonomy;
         this.liveData = liveData;
         this.connector = connector;
+        this.commands = commands;
         this.channels = channels;
         log.info("ZequentClient initialized with {} channels", channels.size());
     }
@@ -83,7 +87,17 @@ public class ZequentClient implements AutoCloseable {
     }
 
     /**
-     * Access remote control operations for drones and docks.
+     * Command any asset by id: {@code listCapabilities(asset)} and
+     * {@code executeCommand(asset, commandId, params)}, plus command events and cancel. The command
+     * API of Zequent 3.0; needs a 3.0 platform.
+     */
+    public Commands commands() {
+        return commands;
+    }
+
+    /**
+     * The 2.x typed remote control (takeoff, goTo, openCover, ...). Kept for 2.x platforms; on 3.0
+     * use {@link #commands()}. Its manual stick input session stays the way to fly by hand.
      *
      * @return RemoteControl interface for flight operations, manual control, and dock operations
      */
@@ -350,8 +364,9 @@ public class ZequentClient implements AutoCloseable {
             MissionAutonomy missionAutonomy = MissionAutonomyImpl.create(globalConfig, missionAutonomyChannel);
             LiveData liveData = LiveDataImpl.create(globalConfig, liveDataChannel);
             Connector connector = ConnectorImpl.create(globalConfig, connectorChannel);
+            Commands commands = CommandsImpl.create(globalConfig, remoteControlChannel);
 
-            return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, channels);
+            return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, commands, channels);
         }
 
         private ServiceConfig buildServiceConfig(ServiceConfigBuilder builder, String serviceName, String envPrefix) {

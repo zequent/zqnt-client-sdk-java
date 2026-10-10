@@ -158,17 +158,10 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Zequent Framework Utils (internal dependency - optional for public). Pinned to the
-             real, published 2.0.0 release (not the floating 1.0.0-SNAPSHOT this used to
-             reference): a SNAPSHOT resolves to whatever was most recently deployed/installed
-             locally at build time, which is not reproducible. See zqnt-protos' README
-             "Versioning" section for the platform-wide convention this now follows. -->
         <dependency>
             <groupId>com.zqnt</groupId>
             <artifactId>zqnt-utils-java</artifactId>
-            <!-- zqnt-utils-java's 2.0.0 line, current preview (its PR #6): the released 2.0.0 predates
-                 the 2.0 contract this SDK speaks (e.g. CoordinateCommandRequest.no_fly_zone_override). -->
-            <version>2.0.0</version>
+            <version>1.0.0-PR7-436ef79-SNAPSHOT</version>
         </dependency>
         <!-- Test dependencies (framework-agnostic) -->
         <dependency>
