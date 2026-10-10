@@ -41,7 +41,7 @@ below are the ones the built-in commands of every Zequent adapter accept.
 | `getCapabilities(sn)` | `listCapabilities(sn)` | returns the v3 `CapabilitySet` |
 | `sendCustomCommand(CustomCommandRequest.forCapability(sn, capability, params))` | the capability's `command_id` | the same params; the capability's target goes in `CommandRequest.target(...)` |
 
-The camera calls on `liveData()` (`changeLens`, `changeZoom`) are also commands on 3.0:
+The camera calls on `liveData()` (`changeCameraLens`, `changeCameraZoom`) are also commands on 3.0:
 `camera.change_lens` (`lens`, `videoId`) and `camera.change_zoom` (`lens`, `payloadIndex`, `zoom`).
 
 **Leave a param out when you have no value.** The platform reads a missing coordinate as "not
