@@ -29,6 +29,9 @@ import io.grpc.stub.ClientResponseObserver;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -105,6 +108,43 @@ public class CommandsImpl implements Commands {
         log.info("ExecuteCommand: asset={}, command={}", proto.getCommand().getAsset(), request.getCommandId());
         return this.<ExecuteCommandResponse>unary((s, o) -> s.executeCommand(proto, o))
                 .thenApply(response -> accepted(response.getResult()));
+    }
+
+    @Override
+    public CompletableFuture<CommandResult> executeAndWait(String assetSn, String commandId, Map<String, ?> params, Duration wait) {
+        CommandRequest.CommandRequestBuilder request = CommandRequest.builder().assetSn(assetSn).commandId(commandId);
+        if (params != null) params.forEach(request::param);
+        return executeAndWait(request.build(), wait);
+    }
+
+    @Override
+    public CompletableFuture<CommandResult> executeAndWait(CommandRequest request, Duration wait) {
+        Objects.requireNonNull(request, "request");
+        requireText(request.getAssetSn(), "assetSn");
+        requireText(request.getCommandId(), "commandId");
+        RunOutcome outcome = new RunOutcome(request.getCommandId());
+        CommandWatch watch = watchAsset(request.getAssetSn(), outcome::event);
+        outcome.future.whenComplete((result, failure) -> watch.close());
+        watch.done().whenComplete((ended, failure) -> outcome.future.completeExceptionally(failure != null
+                ? CommandException.from(failure)
+                : CommandException.watchEnded("the event watch on " + request.getAssetSn() + " ended before "
+                        + request.getCommandId() + " finished")));
+        if (outcome.future.isDone()) return outcome.future;
+        if (wait != null) {
+            CompletableFuture.delayedExecutor(wait.toNanos(), TimeUnit.NANOSECONDS).execute(() ->
+                    outcome.future.completeExceptionally(CommandException.waitTimedOut(
+                            request.getCommandId() + " did not finish within " + wait)));
+        }
+        try {
+            executeCommand(request).whenComplete((result, failure) -> {
+                if (failure != null) outcome.future.completeExceptionally(CommandException.from(failure));
+                else outcome.started(result);
+            });
+        } catch (RuntimeException invalid) {
+            watch.close();
+            throw invalid;
+        }
+        return outcome.future;
     }
 
     @Override
@@ -187,6 +227,54 @@ public class CommandsImpl implements Commands {
             }).exceptionallyCompose(failure -> CompletableFuture.failedFuture(CommandException.from(failure)));
         } catch (RuntimeException circuitOpen) {
             return CompletableFuture.failedFuture(CommandException.from(circuitOpen));
+        }
+    }
+
+    private static final class RunOutcome {
+        private final CompletableFuture<CommandResult> future = new CompletableFuture<>();
+        private final List<CommandEvent> early = new ArrayList<>();
+        private final String commandId;
+        private String executionId;
+
+        RunOutcome(String commandId) {
+            this.commandId = commandId;
+        }
+
+        synchronized void started(CommandResult result) {
+            if (isFinal(result.getState())) {
+                settle(result);
+                return;
+            }
+            executionId = result.getCommandExecutionId();
+            early.forEach(this::event);
+            early.clear();
+        }
+
+        synchronized void event(CommandEvent event) {
+            if (executionId == null) {
+                early.add(event);
+            } else if (executionId.equals(event.getCommandExecutionId()) && isFinal(event.getState())) {
+                settle(CommandResult.newBuilder()
+                        .setCommandExecutionId(event.getCommandExecutionId())
+                        .setCommandId(event.getCommandId().isEmpty() ? commandId : event.getCommandId())
+                        .setState(event.getState())
+                        .setResult(event.getResult())
+                        .setError(event.getError())
+                        .build());
+            }
+        }
+
+        private void settle(CommandResult result) {
+            if (result.getState() == CommandState.COMMAND_STATE_SUCCEEDED) future.complete(result);
+            else future.completeExceptionally(CommandException.of(result));
+        }
+
+        private static boolean isFinal(CommandState state) {
+            return switch (state) {
+                case COMMAND_STATE_SUCCEEDED, COMMAND_STATE_FAILED, COMMAND_STATE_REJECTED,
+                     COMMAND_STATE_CANCELLED, COMMAND_STATE_TIMED_OUT -> true;
+                default -> false;
+            };
         }
     }
 

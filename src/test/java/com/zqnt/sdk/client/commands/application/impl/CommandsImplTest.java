@@ -60,6 +60,9 @@ class CommandsImplTest {
     private final AtomicReference<WatchCommandEventsRequest> lastWatch = new AtomicReference<>();
     private final AtomicReference<StreamObserver<WatchCommandEventsResponse>> openWatch = new AtomicReference<>();
     private final CountDownLatch watchCancelled = new CountDownLatch(1);
+    private final List<StreamObserver<WatchCommandEventsResponse>> assetWatches = new CopyOnWriteArrayList<>();
+    private final List<CommandEvent> eventsOnExecute = new CopyOnWriteArrayList<>();
+    private final List<String> received = new CopyOnWriteArrayList<>();
     private final AtomicReference<Status> refuseWith = new AtomicReference<>();
     private final AtomicReference<CommandResult> answerWith = new AtomicReference<>();
     private Server server;
@@ -245,6 +248,93 @@ class CommandsImplTest {
     }
 
     @Test
+    void executeAndWaitCompletesWithTheSucceededResult() throws Exception {
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_RUNNING));
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_SUCCEEDED).toBuilder()
+                .setResult(Structs.toStruct(Map.of("arrived", true))).build());
+
+        CommandResult result = commands.executeAndWait("drone-1", "navigation.go_to",
+                Map.of("latitude", 52.52), Duration.ofSeconds(5)).get(5, TimeUnit.SECONDS);
+
+        assertEquals(CommandState.COMMAND_STATE_SUCCEEDED, result.getState());
+        assertEquals("exec-1", result.getCommandExecutionId());
+        assertEquals(true, Structs.toMap(result.getResult()).get("arrived"));
+        assertEquals("drone-1", lastWatch.get().getAsset().getSn());
+        assertTrue(watchCancelled.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void executeAndWaitFailsWithTheFinalResultOfAFailedRun() throws Exception {
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_FAILED).toBuilder()
+                .setError(Error.newBuilder().setCode("flight.not_airborne").setMessage("not airborne")).build());
+
+        CommandException failure = failureOf(() -> commands.executeAndWait("drone-1", "navigation.go_to", Map.of(), null).join());
+
+        assertEquals(CommandState.COMMAND_STATE_FAILED, failure.getResult().getState());
+        assertEquals("exec-1", failure.getResult().getCommandExecutionId());
+        assertEquals(ErrorCategory.ERROR_CATEGORY_ASSET, failure.getCategory());
+        assertEquals("flight.not_airborne", failure.getCode());
+        assertEquals("not airborne", failure.getMessage());
+        assertTrue(watchCancelled.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void executeAndWaitFailsOnARejectionWithoutWaiting() throws Exception {
+        answerWith.set(CommandResult.newBuilder()
+                .setCommandId("flight.takeoff")
+                .setState(CommandState.COMMAND_STATE_REJECTED)
+                .setError(Error.newBuilder().setCode("command.invalid_params"))
+                .build());
+
+        CommandException failure = failureOf(() -> commands.executeAndWait("drone-1", "flight.takeoff", Map.of(), null).join());
+
+        assertEquals(ErrorCategory.ERROR_CATEGORY_INVALID_ARGUMENT, failure.getCategory());
+        assertEquals(CommandState.COMMAND_STATE_REJECTED, failure.getResult().getState());
+        assertTrue(watchCancelled.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void executeAndWaitIgnoresEventsOfOtherRuns() throws Exception {
+        eventsOnExecute.add(event("exec-7", CommandState.COMMAND_STATE_FAILED));
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_SUCCEEDED));
+
+        CommandResult result = commands.executeAndWait("drone-1", "navigation.go_to", Map.of(), Duration.ofSeconds(5))
+                .get(5, TimeUnit.SECONDS);
+
+        assertEquals("exec-1", result.getCommandExecutionId());
+        assertEquals(CommandState.COMMAND_STATE_SUCCEEDED, result.getState());
+    }
+
+    @Test
+    void executeAndWaitSeesAnOutcomeThatArrivesBeforeTheReply() throws Exception {
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_SUCCEEDED));
+
+        CommandResult result = commands.executeAndWait("drone-1", "navigation.go_to", Map.of(), Duration.ofSeconds(5))
+                .get(5, TimeUnit.SECONDS);
+
+        assertEquals(List.of("WatchCommandEvents", "ExecuteCommand"), received);
+        assertEquals(CommandState.COMMAND_STATE_SUCCEEDED, result.getState());
+    }
+
+    @Test
+    void executeAndWaitStopsWaitingAfterTheCallersTimeout() throws Exception {
+        eventsOnExecute.add(event("exec-1", CommandState.COMMAND_STATE_RUNNING));
+
+        CommandException failure = failureOf(() -> commands.executeAndWait("drone-1", "navigation.go_to", Map.of(),
+                Duration.ofMillis(200)).join());
+
+        assertEquals(ErrorCategory.ERROR_CATEGORY_TIMEOUT, failure.getCategory());
+        assertNull(failure.getResult());
+        assertTrue(watchCancelled.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void executeAndWaitNeedsAnAssetSn() {
+        assertThrows(IllegalArgumentException.class, () -> commands.executeAndWait(
+                CommandRequest.builder().assetId("asset-uuid").commandId("flight.takeoff").build(), null));
+    }
+
+    @Test
     void paramsRoundTripThroughAStruct() {
         Map<String, Object> params = Map.of("waypoints", List.of(Map.of("latitude", 1.5)), "enabled", true, "mode", "cool");
 
@@ -293,7 +383,10 @@ class CommandsImplTest {
         @Override
         public void executeCommand(ExecuteCommandRequest request, StreamObserver<ExecuteCommandResponse> observer) {
             lastExecute.set(request);
+            received.add("ExecuteCommand");
             if (refused(observer)) return;
+            eventsOnExecute.forEach(event -> assetWatches.forEach(watch ->
+                    watch.onNext(WatchCommandEventsResponse.newBuilder().setEvent(event).build())));
             CommandResult result = answerWith.get() != null ? answerWith.get() : CommandResult.newBuilder()
                     .setCommandExecutionId("exec-1")
                     .setCommandId(request.getCommand().getCommandId())
@@ -316,8 +409,12 @@ class CommandsImplTest {
         @Override
         public void watchCommandEvents(WatchCommandEventsRequest request, StreamObserver<WatchCommandEventsResponse> observer) {
             lastWatch.set(request);
+            received.add("WatchCommandEvents");
             if (refused(observer)) return;
-            ((ServerCallStreamObserver<WatchCommandEventsResponse>) observer).setOnCancelHandler(watchCancelled::countDown);
+            ((ServerCallStreamObserver<WatchCommandEventsResponse>) observer).setOnCancelHandler(() -> {
+                assetWatches.remove(observer);
+                watchCancelled.countDown();
+            });
             if (!request.getCommandExecutionId().isBlank()) {
                 observer.onNext(WatchCommandEventsResponse.newBuilder()
                         .setEvent(event(request.getCommandExecutionId(), CommandState.COMMAND_STATE_RUNNING)).build());
@@ -328,6 +425,7 @@ class CommandsImplTest {
                 return;
             }
             openWatch.set(observer);
+            assetWatches.add(observer);
         }
 
         private boolean refused(StreamObserver<?> observer) {

@@ -1,15 +1,17 @@
 package com.zqnt.sdk.client.commands.domains;
 
 import com.zqnt.protos.capability.v3.CommandResult;
+import com.zqnt.protos.capability.v3.CommandState;
 import com.zqnt.protos.common.v3.Error;
 import com.zqnt.protos.common.v3.ErrorCategory;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 
 /**
- * A command call the platform refused, or a command it {@code REJECTED} before it started.
+ * A command call the platform refused, a command it {@code REJECTED} before it started, or (from
+ * {@code executeAndWait}) a run that ended {@code FAILED}, {@code CANCELLED} or {@code TIMED_OUT}.
  * {@link #getCategory()} says what kind of refusal, {@link #getCode()} the stable machine-readable
- * code (e.g. {@code command.invalid_params}), {@link #getResult()} the rejected result when there is one.
+ * code (e.g. {@code command.invalid_params}), {@link #getResult()} the final result when there is one.
  */
 public final class CommandException extends RuntimeException {
 
@@ -30,14 +32,31 @@ public final class CommandException extends RuntimeException {
     }
 
     public static CommandException rejected(CommandResult result) {
+        return of(result);
+    }
+
+    /**
+     * A command that did not succeed, from its final result: {@code REJECTED}, {@code FAILED},
+     * {@code CANCELLED} or {@code TIMED_OUT}. Without a category on the error, a rejection counts as
+     * {@code INVALID_ARGUMENT}, a failure as {@code ASSET}, a timeout as {@code TIMEOUT}.
+     */
+    public static CommandException of(CommandResult result) {
         Error error = result.getError();
         String message = error.getMessage().isBlank()
-                ? result.getCommandId() + " was rejected"
+                ? result.getCommandId() + " " + outcomeOf(result.getState())
                 : error.getMessage();
         ErrorCategory category = error.getCategory() == ErrorCategory.ERROR_CATEGORY_UNSPECIFIED
-                ? ErrorCategory.ERROR_CATEGORY_INVALID_ARGUMENT
+                ? defaultCategory(result.getState())
                 : error.getCategory();
         return new CommandException(message, category, error.getCode(), error.getRetryable(), null, result, null);
+    }
+
+    public static CommandException waitTimedOut(String message) {
+        return new CommandException(message, ErrorCategory.ERROR_CATEGORY_TIMEOUT, "", false, null, null, null);
+    }
+
+    public static CommandException watchEnded(String message) {
+        return new CommandException(message, ErrorCategory.ERROR_CATEGORY_SERVICE, "", true, null, null, null);
     }
 
     public static CommandException fromStatus(StatusRuntimeException failure) {
@@ -54,6 +73,24 @@ public final class CommandException extends RuntimeException {
         }
         String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
         return new CommandException(message, ErrorCategory.ERROR_CATEGORY_SERVICE, "", true, null, null, failure);
+    }
+
+    private static String outcomeOf(CommandState state) {
+        return switch (state) {
+            case COMMAND_STATE_FAILED -> "failed";
+            case COMMAND_STATE_CANCELLED -> "was cancelled";
+            case COMMAND_STATE_TIMED_OUT -> "timed out";
+            default -> "was rejected";
+        };
+    }
+
+    private static ErrorCategory defaultCategory(CommandState state) {
+        return switch (state) {
+            case COMMAND_STATE_FAILED -> ErrorCategory.ERROR_CATEGORY_ASSET;
+            case COMMAND_STATE_TIMED_OUT -> ErrorCategory.ERROR_CATEGORY_TIMEOUT;
+            case COMMAND_STATE_CANCELLED -> ErrorCategory.ERROR_CATEGORY_UNSPECIFIED;
+            default -> ErrorCategory.ERROR_CATEGORY_INVALID_ARGUMENT;
+        };
     }
 
     static ErrorCategory categoryOf(Status.Code code) {
@@ -89,7 +126,7 @@ public final class CommandException extends RuntimeException {
         return status;
     }
 
-    /** The rejected command's result; {@code null} when the call itself was refused. */
+    /** The command's final result; {@code null} when the call itself was refused or the wait ended without one. */
     public CommandResult getResult() {
         return result;
     }

@@ -158,16 +158,15 @@ CapabilitySet capabilities = commands.listCapabilities("DOCK-1").join();
 capabilities.getCapabilitiesList().forEach(c ->
         System.out.println(c.getCommandId() + " " + c.getSafety().getRisk() + " " + c.getInputSchema()));
 
-CommandResult takeoff = commands.executeCommand("DOCK-1", "flight.takeoff",
-        Map.of("latitude", 47.7752, "longitude", 9.2658, "altitude", 40)).join();
+CommandResult takeoff = commands.executeAndWait("DOCK-1", "flight.takeoff",
+        Map.of("latitude", 47.7752, "longitude", 9.2658, "altitude", 40), Duration.ofMinutes(5)).join();
 
-try (CommandWatch watch = commands.watchCommand(takeoff.getCommandExecutionId(),
+CommandResult goTo = commands.executeCommand("DOCK-1", "navigation.go_to",
+        Map.of("latitude", 47.7760, "longitude", 9.2671, "altitude", 60)).join();
+try (CommandWatch watch = commands.watchCommand(goTo.getCommandExecutionId(),
         event -> System.out.println(event.getState() + " " + event.getProgress()))) {
     watch.done().get(5, TimeUnit.MINUTES);
 }
-
-commands.executeCommand("DOCK-1", "navigation.go_to",
-        Map.of("latitude", 47.7760, "longitude", 9.2671, "altitude", 60)).join();
 ```
 
 - `listCapabilities(assetSn)`: the asset's `CapabilitySet`: command ids, input/output JSON
@@ -176,13 +175,21 @@ commands.executeCommand("DOCK-1", "navigation.go_to",
   with a `commandExecutionId` while it is underway, or the final state. `executeCommand(CommandRequest)`
   adds a target, a timeout, a reason (required for CRITICAL commands), an idempotency key and the
   no-fly zone override.
+- `executeAndWait(assetSn, commandId, params, wait)` / `executeAndWait(CommandRequest, wait)`: runs
+  the command and completes with its `SUCCEEDED` result. It watches the asset before it sends the
+  command, so a run that finishes right away is not missed, and ignores the events of other runs.
+  `wait` bounds the wait (`null` = no limit); when it elapses the future fails with category
+  `TIMEOUT` and the command keeps running (`cancelCommand` stops it). Completing or cancelling the
+  future closes the watch.
 - `watchCommand(commandExecutionId, onEvent)` / `watchAsset(assetSn, onEvent)`: command events
-  from now on; `done()` completes when the run ends or the watch is closed. Start the watch before
-  the run can finish, or read the final state from `executeCommand`.
+  from now on; `done()` completes when the run ends or the watch is closed. A watch opened after
+  `executeCommand` returns can miss the end of a fast run; use `executeAndWait` to wait for it.
 - `cancelCommand(commandExecutionId, reason)`.
 - Errors: a refused call or a command rejected before it started fails the future with a
   `CommandException` (`getCategory()`, `getCode()` such as `command.invalid_params`, `getStatus()`).
-  A command that started and failed is a `CommandResult` with state `FAILED` and its error.
+  From `executeCommand`, a command that started and failed is a `CommandResult` with state `FAILED`
+  and its error; `executeAndWait` fails with a `CommandException` for a run that ends `FAILED`,
+  `CANCELLED` or `TIMED_OUT`, with that final `getResult()`.
 - `navigation.go_to` altitude is metres above the **takeoff point**. Leave a param out when you have
   no value; never send `0` for "not given". `null` map values are left out.
 - `Structs.toMap(result.getResult())` turns a result or event payload into a plain map.
@@ -323,7 +330,7 @@ mvn deploy
 
 This SDK provides:
 - `ZequentClient` - Main client interface
-- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, watch, cancel)
+- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, executeAndWait, watch, cancel)
 - Service interfaces (RemoteControl (2.x typed commands, deprecated), MissionAutonomy, LiveData, Connector)
 - Request/Response models
 - Auto-configuration via CDI (Quarkus)

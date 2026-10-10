@@ -55,6 +55,7 @@ is left out for you.
 | `error.errorCode` / `errorMessage` | `CommandResult.getError()`: `category`, stable `code` (e.g. `flight.not_airborne`), `message`, `retryable` |
 | a refused call (`StatusRuntimeException`) | `CommandException` with `getCategory()`, `getCode()`, `getStatus()` |
 | a command refused before it started | `CommandException` with the rejected `getResult()` (e.g. `INVALID_ARGUMENT` / `command.invalid_params`) |
+| waiting for the outcome | `executeAndWait(assetSn, commandId, params, wait)`: the `SUCCEEDED` result, or `CommandException` with the final `getResult()` |
 | `progress` | `watchCommand(commandExecutionId, event -> ...)`: `progress`, `remaining`, `message`, the final `result` |
 | `tid` | `CommandResult.getCommandExecutionId()`: watch it, cancel it with `cancelCommand(id, reason)` |
 | `result` of a custom command (a map) | `Structs.toMap(result.getResult())` |
