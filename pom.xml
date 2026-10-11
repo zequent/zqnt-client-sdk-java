@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.zqnt.sdk</groupId>
     <artifactId>client-java-sdk</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>3.0.0-SNAPSHOT</version>
     <name>Zequent Java Client SDK</name>
     <description>A framework-agnostic Java client SDK for Zequent's gRPC services, designed for easy integration with any Java application.</description>
     <url>https://github.com/zequent/zqnt-client-sdk-java</url>
