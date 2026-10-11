@@ -36,9 +36,9 @@ The **Zequent Client SDK** is a **Java library/dependency** that customers add t
 
 ```xml
 <dependency>
-    <groupId>com.zequent.framework.client.sdk</groupId>
-    <artifactId>java-client-sdk</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <groupId>com.zqnt.sdk</groupId>
+    <artifactId>client-java-sdk</artifactId>
+    <version>3.0.0</version>
 </dependency>
 ```
 
