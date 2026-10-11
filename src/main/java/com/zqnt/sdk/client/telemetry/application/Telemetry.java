@@ -1,5 +1,8 @@
 package com.zqnt.sdk.client.telemetry.application;
 
+import com.zqnt.protos.telemetry.v3.Alert;
+import com.zqnt.protos.telemetry.v3.AlertSeverity;
+import com.zqnt.protos.telemetry.v3.DetectionBatch;
 import com.zqnt.protos.telemetry.v3.SourceStatus;
 import com.zqnt.protos.telemetry.v3.TelemetrySample;
 import com.zqnt.sdk.client.telemetry.domains.TelemetryWatch;
@@ -9,7 +12,7 @@ import java.util.Collection;
 import java.util.function.Consumer;
 
 /**
- * Live telemetry of Zequent 3.0. A {@link TelemetrySample} has the fields every asset shares
+ * Live data of assets: telemetry, detections and alerts. A {@link TelemetrySample} has the fields every asset shares
  * (position, relative altitude, heading, speeds, battery); everything device-specific is in its
  * {@code details}, under the keys the asset declares in its capabilities' {@code telemetry_fields}.
  */
@@ -31,4 +34,18 @@ public interface Telemetry {
     default TelemetryWatch watchTelemetry(Collection<String> assetSns, Consumer<TelemetrySample> onSample) {
         return watchTelemetry(assetSns, null, onSample, status -> { });
     }
+
+    /**
+     * Detection batches of the given assets (empty or {@code null}: every asset of the caller's
+     * organization) from now on, until the watch is closed. Fails like {@link #watchTelemetry} when
+     * neither a batch nor a heartbeat arrives in time.
+     */
+    TelemetryWatch watchDetections(Collection<String> assetSns, Consumer<DetectionBatch> onBatch);
+
+    /**
+     * Alerts of the given assets (empty or {@code null}: every asset of the caller's organization) at
+     * {@code minSeverity} or above ({@code null}: every severity), until the watch is closed. Fails like
+     * {@link #watchTelemetry} when neither an alert nor a heartbeat arrives in time.
+     */
+    TelemetryWatch watchAlerts(Collection<String> assetSns, AlertSeverity minSeverity, Consumer<Alert> onAlert);
 }

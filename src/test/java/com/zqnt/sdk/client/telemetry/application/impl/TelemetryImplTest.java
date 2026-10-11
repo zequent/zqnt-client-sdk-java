@@ -3,10 +3,17 @@ package com.zqnt.sdk.client.telemetry.application.impl;
 import com.google.protobuf.Timestamp;
 import com.zqnt.protos.common.v3.AssetRef;
 import com.zqnt.protos.common.v3.ErrorCategory;
+import com.zqnt.protos.telemetry.v3.Alert;
+import com.zqnt.protos.telemetry.v3.AlertSeverity;
+import com.zqnt.protos.telemetry.v3.DetectionBatch;
 import com.zqnt.protos.telemetry.v3.SourceState;
 import com.zqnt.protos.telemetry.v3.SourceStatus;
 import com.zqnt.protos.telemetry.v3.TelemetrySample;
 import com.zqnt.protos.telemetry.v3.TelemetryServiceGrpc;
+import com.zqnt.protos.telemetry.v3.WatchAlertsRequest;
+import com.zqnt.protos.telemetry.v3.WatchAlertsResponse;
+import com.zqnt.protos.telemetry.v3.WatchDetectionsRequest;
+import com.zqnt.protos.telemetry.v3.WatchDetectionsResponse;
 import com.zqnt.protos.telemetry.v3.WatchTelemetryRequest;
 import com.zqnt.protos.telemetry.v3.WatchTelemetryResponse;
 import com.zqnt.sdk.client.commands.domains.CommandException;
@@ -39,6 +46,10 @@ class TelemetryImplTest {
 
     private final AtomicReference<WatchTelemetryRequest> lastWatch = new AtomicReference<>();
     private final AtomicReference<StreamObserver<WatchTelemetryResponse>> openWatch = new AtomicReference<>();
+    private final AtomicReference<WatchDetectionsRequest> lastDetectionWatch = new AtomicReference<>();
+    private final AtomicReference<StreamObserver<WatchDetectionsResponse>> openDetectionWatch = new AtomicReference<>();
+    private final AtomicReference<WatchAlertsRequest> lastAlertWatch = new AtomicReference<>();
+    private final AtomicReference<StreamObserver<WatchAlertsResponse>> openAlertWatch = new AtomicReference<>();
     private final AtomicReference<Status> refuseWith = new AtomicReference<>();
     private final CountDownLatch watchCancelled = new CountDownLatch(1);
     private Server server;
@@ -121,6 +132,56 @@ class TelemetryImplTest {
                 () -> telemetry(35).watchTelemetry(List.of("drone-1", " "), sample -> { }));
     }
 
+    @Test
+    void watchesDetectionBatchesOfTheNamedAssets() {
+        List<DetectionBatch> batches = new CopyOnWriteArrayList<>();
+
+        TelemetryWatch watch = telemetry(35).watchDetections(List.of("drone-1"), batches::add);
+        openDetectionWatch.get().onNext(WatchDetectionsResponse.newBuilder().setHeartbeat(Timestamp.newBuilder().setSeconds(1)).build());
+        openDetectionWatch.get().onNext(WatchDetectionsResponse.newBuilder().setBatch(DetectionBatch.newBuilder()
+                .setAsset(AssetRef.newBuilder().setSn("drone-1")).setStreamUrl("rtsp://cam")).build());
+        watch.close();
+
+        assertEquals(List.of("drone-1"), lastDetectionWatch.get().getAssetsList().stream().map(AssetRef::getSn).toList());
+        assertFalse(lastDetectionWatch.get().getContext().getRequestId().isBlank());
+        assertEquals(1, batches.size());
+        assertEquals("rtsp://cam", batches.get(0).getStreamUrl());
+        assertTrue(watch.isDone());
+    }
+
+    @Test
+    void watchesAlertsFromTheMinimumSeverity() {
+        List<Alert> alerts = new CopyOnWriteArrayList<>();
+
+        TelemetryWatch watch = telemetry(35).watchAlerts(null, AlertSeverity.ALERT_SEVERITY_WARNING, alerts::add);
+        openAlertWatch.get().onNext(WatchAlertsResponse.newBuilder().setHeartbeat(Timestamp.newBuilder().setSeconds(1)).build());
+        openAlertWatch.get().onNext(WatchAlertsResponse.newBuilder().setAlert(Alert.newBuilder()
+                .setAsset(AssetRef.newBuilder().setSn("DOCK-1")).setCode("dock.rain")
+                .setSeverity(AlertSeverity.ALERT_SEVERITY_WARNING)).build());
+        watch.close();
+
+        assertEquals(0, lastAlertWatch.get().getAssetsCount());
+        assertEquals(AlertSeverity.ALERT_SEVERITY_WARNING, lastAlertWatch.get().getMinSeverity());
+        assertEquals(List.of("dock.rain"), alerts.stream().map(Alert::getCode).toList());
+    }
+
+    @Test
+    void anAlertWatchWithoutSeverityAsksForEverySeverity() {
+        telemetry(35).watchAlerts(List.of("DOCK-1"), null, alert -> { }).close();
+
+        assertEquals(AlertSeverity.ALERT_SEVERITY_UNSPECIFIED, lastAlertWatch.get().getMinSeverity());
+    }
+
+    @Test
+    void aSilentDetectionStreamFailsAfterTheHeartbeatTimeout() {
+        TelemetryWatch watch = telemetry(1).watchDetections(List.of("drone-1"), batch -> { });
+
+        CompletionException failure = assertThrows(CompletionException.class,
+                () -> watch.done().orTimeout(5, TimeUnit.SECONDS).join());
+        assertEquals(ErrorCategory.ERROR_CATEGORY_SERVICE,
+                assertInstanceOf(CommandException.class, failure.getCause()).getCategory());
+    }
+
     private Telemetry telemetry(int heartbeatTimeoutSeconds) {
         return TelemetryImpl.create(GrpcClientConfig.builder()
                 .liveDataConfig(ServiceConfig.builder().serviceName("live-data").host("in-process").port(0).build())
@@ -140,6 +201,18 @@ class TelemetryImplTest {
             }
             ((ServerCallStreamObserver<WatchTelemetryResponse>) observer).setOnCancelHandler(watchCancelled::countDown);
             openWatch.set(observer);
+        }
+
+        @Override
+        public void watchDetections(WatchDetectionsRequest request, StreamObserver<WatchDetectionsResponse> observer) {
+            lastDetectionWatch.set(request);
+            openDetectionWatch.set(observer);
+        }
+
+        @Override
+        public void watchAlerts(WatchAlertsRequest request, StreamObserver<WatchAlertsResponse> observer) {
+            lastAlertWatch.set(request);
+            openAlertWatch.set(observer);
         }
     }
 }

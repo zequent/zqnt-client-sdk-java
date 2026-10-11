@@ -37,16 +37,9 @@ public class GrpcClientConfig {
     @Builder.Default
     private int requestTimeoutSeconds = 60;
 
-    // Long-lived LiveData stream configuration
-    @Builder.Default
-    private int streamInactivityTimeoutSeconds = 5 * 60;
-
-    /** Allows roughly three missed 10-second application heartbeats before reconnecting telemetry. */
+    /** Allows roughly three missed 10-second heartbeats before a live data watch fails. */
     @Builder.Default
     private int telemetryHeartbeatTimeoutSeconds = 35;
-
-    @Builder.Default
-    private int liveDataSchedulerThreads = 2;
 
     /**
      * The client credential sent on every call (see {@link com.zqnt.sdk.client.grpc.ClientCredentials}).

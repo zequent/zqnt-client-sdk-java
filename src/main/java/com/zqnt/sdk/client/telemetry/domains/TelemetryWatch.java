@@ -7,9 +7,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * A running telemetry watch. {@link #done()} completes when {@link #close()} is called or the platform
+ * A running live data watch. {@link #done()} completes when {@link #close()} is called or the platform
  * ends the watch, and fails with a {@link CommandException} when the platform refuses or drops it, or
- * when neither a sample nor a heartbeat arrived in time. A watch does not reconnect: watch again.
+ * when neither an item nor a heartbeat arrived in time. A watch does not reconnect: watch again.
  */
 public final class TelemetryWatch implements AutoCloseable {
 

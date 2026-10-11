@@ -26,7 +26,7 @@ The **Zequent Client SDK** is a **Java library/dependency** that customers add t
             ▼                        ▼                        ▼
 ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
 │ Remote Control      │  │ Mission Autonomy    │  │ Live Data Service   │
-│ Service (Port 8002) │  │ Service (Port 8004) │  │ (Port 8003)        │
+│ commands() (8002)   │  │ (Port 8004)         │  │ telemetry() (8003)  │
 └─────────────────────┘  └─────────────────────┘  └─────────────────────┘
 ```
 
@@ -130,8 +130,8 @@ public class DroneService {
     @Inject
     ZequentClient zequent;  // ← Automatically configured!
 
-    public void handleTelemetry() {
-        zequent.liveData().streamTelemetryData();
+    public TelemetryWatch watchDock(Consumer<TelemetrySample> onSample) {
+        return zequent.telemetry().watchTelemetry(List.of("DOCK-1"), onSample);
     }
 
     public CompletableFuture<ConnectorResponse> findAsset(String sn) {
@@ -146,9 +146,9 @@ public class DroneService {
 }
 ```
 
-### Commands (Zequent 3.0)
+### Commands
 
-On a 3.0 platform every asset is commanded the same way: list what it can do, then run a command by
+Every asset is commanded the same way: list what it can do, then run a command by
 its dotted id with a JSON object of params. There are no typed methods per command.
 
 ```java
@@ -197,7 +197,7 @@ try (CommandWatch watch = commands.watchCommand(goTo.getCommandExecutionId(),
 `commands()` uses the remote-control service connection, credential and interceptors already
 configured for the client; nothing else to set up.
 
-### Manual control (Zequent 3.0)
+### Manual control
 
 Stick input goes over one stream per asset. Put the asset in manual control first, then send
 inputs (roll, pitch, yaw, throttle from -1 to 1) at your control rate:
@@ -216,7 +216,7 @@ with a `CommandException` when the platform refuses the session (no adapter reac
 another organization) or the adapter drops it; `send` then throws `IllegalStateException`. Leave
 manual control with `flight.manual.exit`.
 
-### Telemetry (Zequent 3.0)
+### Live data
 
 ```java
 try (TelemetryWatch watch = zequent.telemetry().watchTelemetry(List.of("DOCK-1"), Duration.ofSeconds(1),
@@ -234,49 +234,22 @@ keeps at most one sample per asset per interval (`null` = every sample). `onSour
 watched asset's state first, then each change to online, stale or no data. The platform sends
 heartbeats on a quiet stream; when neither a sample nor a heartbeat arrives within
 `telemetryHeartbeatTimeoutSeconds` the watch fails with a retryable `SERVICE` `CommandException`.
-A watch does not reconnect: watch again. `liveData().streamTelemetryData` stays the 2.x stream.
-
-**Upgrading from 2.x:** the typed methods on `remoteControl()` (`takeoff`, `goTo`, `openCover`, ...)
-and `getCapabilities`/`sendCustomCommand` are deprecated and keep working against 2.x platforms.
-[MIGRATION.md](MIGRATION.md) maps every typed call to its command id and params.
-
-### Dynamic payload commands (2.x)
-
-On a 2.x platform, dynamic payload commands run through `remoteControl()`. Discover the current capabilities first:
-their target reference is the authoritative routing value for the command.
-
-The client flow is:
-
-1. Call `remoteControl().getCapabilities(dockSn)`.
-2. Select the advertised logical command.
-3. Build the request with `CustomCommandRequest.forCapability(...)` so its `targetRef` is retained.
-4. Send the command and check `CustomCommandResponse.success`, `error`, and `result`.
-
-The `vendorMethod` from the discovered definition is intentionally not sent by the client. The edge
-adapter resolves the stable logical command to the vendor-specific implementation.
+A watch does not reconnect: watch again.
 
 ```java
-String dockSn = "YOUR_DOCK_SN";
-
-return zequent.remoteControl().getCapabilities(dockSn).thenCompose(snapshot -> {
-    var capability = snapshot.getCapabilities().stream()
-            .filter(value -> "parachute.led.set".equals(value.getCommandId()))
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("Parachute capability is unavailable"));
-
-    // value: 1 = on, 0 = off. Widget index 1 is added by the adapter.
-    return zequent.remoteControl().sendCustomCommand(
-            CustomCommandRequest.forCapability(dockSn, capability, Map.of("value", 1)));
-});
+zequent.telemetry().watchDetections(List.of("DRONE-1"), batch -> System.out.println(batch.getDetectionsCount()));
+zequent.telemetry().watchAlerts(null, AlertSeverity.ALERT_SEVERITY_WARNING,
+        alert -> System.out.println(alert.getAsset().getSn() + " " + alert.getCode() + " " + alert.getMessage()));
 ```
 
-If `parachute.led.set` is absent, the payload was not recognized as `PARACHUTE`; its current PSDK
-name must contain `flyfire` or `parachute`.
+`watchDetections(assetSns, onBatch)` streams the `DetectionBatch`es of the given assets (AI
+detections with the stream they came from); `watchAlerts(assetSns, minSeverity, onAlert)` streams
+`Alert`s (a stable `code` such as `dock.rain`, a severity, a message and `details`) at
+`minSeverity` or above (`null` = every severity). Both send heartbeats and fail like
+`watchTelemetry`.
 
-The complete executable example is
-[`PayloadCustomCommandIntegrationTest`](src/test/java/com/zqnt/sdk/client/PayloadCustomCommandIntegrationTest.java).
-Its first test only discovers and constructs the request. The second test changes hardware state and
-therefore runs only with `-Dpayload.command.execution.enabled=true`.
+**Upgrading from 2.x:** the typed calls of 2.x (`remoteControl()` and `liveData()`) are gone in
+3.0. [MIGRATION.md](MIGRATION.md) maps every typed call to its command id and params.
 
 **That's it!** The SDK auto-configures via `ZequentClientProducer` (CDI).
 
@@ -306,12 +279,12 @@ public class ZequentConfig {
 ```java
 @Service
 @RequiredArgsConstructor
-public class LiveDataService {
+public class DockService {
 
     private final ZequentClient zequentClient;  // ← Injected by Spring
 
-    public void handleTelemetry() {
-        zequentClient.liveData().streamTelemetryData();
+    public CompletableFuture<CommandResult> openCover(String dockSn) {
+        return zequentClient.commands().executeAndWait(dockSn, "dock.open_cover", Map.of(), Duration.ofMinutes(2));
     }
 }
 ```
@@ -369,9 +342,10 @@ mvn deploy
 
 This SDK provides:
 - `ZequentClient` - Main client interface
-- `commands()`: any command by id on 3.0 (listCapabilities, executeCommand, executeAndWait, watch, cancel, streamManualControl)
-- `telemetry()`: 3.0 telemetry samples and source status (watchTelemetry)
-- Service interfaces (RemoteControl (2.x typed commands, deprecated), MissionAutonomy, LiveData, Connector)
+- `commands()`: any command by id (listCapabilities, executeCommand, executeAndWait, watch, cancel, streamManualControl)
+- `telemetry()`: telemetry samples and source status, detections and alerts (watchTelemetry, watchDetections, watchAlerts)
+- `missionAutonomy()`: Applications, Skills and their executions
+- `connector()`: assets, payloads, policies and technical configuration
 - Request/Response models
 - Auto-configuration via CDI (Quarkus)
 - gRPC channel management
@@ -391,7 +365,7 @@ The SDK is compiled with Java 21 for maximum customer compatibility. If your app
 ✅ **Framework Agnostic** - Works with Spring Boot, Quarkus, Micronaut, etc.
 ✅ **Sensible Defaults** - Works out-of-the-box (localhost:8002/8004/8003/8010)
 ✅ **Property-Based Config** - Override via `application.properties` (optional)
-✅ **Multi-Service Support** - Remote Control, Mission Autonomy, Live Data, Connector
+✅ **Multi-Service Support** - Commands, Live Data, Mission Autonomy, Connector
 ✅ **Built-in Resilience** - Retry, Circuit Breaker, Timeouts
 ✅ **Load Balancing** - Round-robin, Least-requests
 ✅ **Service Discovery** - Stork support for Kubernetes
