@@ -10,9 +10,11 @@ CommandResult result = zequent.commands()
         .join();
 ```
 
-The 2.x typed methods on `zequent.remoteControl()` still work against 2.x platforms and are
-deprecated. `remoteControl().startManualControlInput(...)` stays for stick input on 2.x platforms;
-on 3.0 use `commands().streamManualControl(...)`.
+The 2.x typed calls are removed in 3.0: `zequent.remoteControl()` and `zequent.liveData()` no longer
+exist, together with their request/response classes (`TakeoffRequest`, `GoToRequest`,
+`DockOperationRequest`, `RemoteControlResponse`, `CapabilitySnapshot`, `CustomCommandRequest`,
+`StreamTelemetryRequest`, ...). Use `commands()` for every command and `telemetry()` for live data.
+To talk to a 2.x platform, stay on a 2.x SDK.
 
 ## Typed call → command id + params
 
@@ -41,8 +43,14 @@ below are the ones the built-in commands of every Zequent adapter accept.
 | `getCapabilities(sn)` | `listCapabilities(sn)` | returns the v3 `CapabilitySet` |
 | `sendCustomCommand(CustomCommandRequest.forCapability(sn, capability, params))` | the capability's `command_id` | the same params; the capability's target goes in `CommandRequest.target(...)` |
 
-The camera calls on `liveData()` (`changeCameraLens`, `changeCameraZoom`) are also commands on 3.0:
-`camera.change_lens` (`lens`, `videoId`) and `camera.change_zoom` (`lens`, `payloadIndex`, `zoom`).
+The camera and live-stream calls of `liveData()` are commands too:
+
+| 2.x typed call | Command id | Params |
+|---|---|---|
+| `liveData().changeCameraLens(ChangeLensRequest)` | `camera.change_lens` | `lens`, `videoId` |
+| `liveData().changeCameraZoom(ChangeZoomRequest)` | `camera.change_zoom` | `lens`, `payloadIndex`, `zoom` |
+| `liveData().startLiveStream(LiveDataStartLiveStreamRequest)` | `stream.start` | as in the capability's `input_schema` |
+| `liveData().stopLiveStream(LiveDataStopLiveStreamRequest)` | `stream.stop` | as in the capability's `input_schema` |
 
 **Leave a param out when you have no value.** The platform reads a missing coordinate as "not
 given"; sending `0` means latitude 0 / longitude 0 / ground level. A `null` value in the params map
@@ -88,10 +96,16 @@ zequent.commands().executeCommand(CommandRequest.builder()
 
 Enter and leave manual control with the commands `flight.manual.enter` and `flight.manual.exit`.
 
-## Telemetry
+## Live data
 
 | 2.x | 3.0 |
 |---|---|
 | `liveData().streamTelemetryData(request, onData)` | `telemetry().watchTelemetry(assetSns, minInterval, onSample, onSourceStatus)` |
+| `liveData().streamNotifications(request, onData, onError)` | `telemetry().watchAlerts(assetSns, minSeverity, onAlert)` |
+| a returned `StreamHandle`, `stop()` | a `TelemetryWatch`: `close()`, `done()` |
 | per-vendor telemetry types | `TelemetrySample`: position, relative altitude, heading, speeds, battery; the rest in `details` under the capabilities' `telemetry_fields` |
 | reconnects on its own | fails `done()` on a refusal, a dropped stream or missing heartbeats; watch again |
+| `streamInactivityTimeoutSeconds`, `liveDataSchedulerThreads` | removed; `telemetryHeartbeatTimeoutSeconds` bounds every watch |
+
+`connector().assetMonitoring(...)` returns its `StreamHandle` from `com.zqnt.sdk.client.connector.domains`
+now (it was in `livedata.domains`).

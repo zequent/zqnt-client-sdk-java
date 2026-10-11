@@ -7,12 +7,8 @@ import com.zqnt.sdk.client.config.ZequentClientConfigFactory;
 import com.zqnt.sdk.client.connector.application.Connector;
 import com.zqnt.sdk.client.connector.application.impl.ConnectorImpl;
 import com.zqnt.sdk.client.grpc.ChannelFactory;
-import com.zqnt.sdk.client.livedata.application.LiveData;
-import com.zqnt.sdk.client.livedata.application.impl.LiveDataImpl;
 import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
 import com.zqnt.sdk.client.missionautonomy.application.impl.MissionAutonomyImpl;
-import com.zqnt.sdk.client.remotecontrol.application.RemoteControl;
-import com.zqnt.sdk.client.remotecontrol.application.impl.RemoteControlImpl;
 
 import io.grpc.ClientInterceptor;
 import io.grpc.ManagedChannel;
@@ -81,13 +77,11 @@ public class ZequentClientProducer {
         channels.add(connectorChannel);
 
         // Create service implementations (internal, not exposed as beans)
-        RemoteControl remoteControl =RemoteControlImpl.create(config, remoteControlChannel);
         MissionAutonomy missionAutonomy = MissionAutonomyImpl.create(config, missionAutonomyChannel);
-        LiveData liveData = LiveDataImpl.create(config, liveDataChannel);
         Connector connector = ConnectorImpl.create(config, connectorChannel);
 
         // Create and return ZequentClient
-        return new ZequentClient(config, remoteControl, missionAutonomy, liveData, connector,
+        return new ZequentClient(config, missionAutonomy, connector,
                 CommandsImpl.create(config, remoteControlChannel), TelemetryImpl.create(config, liveDataChannel), channels);
     }
 
