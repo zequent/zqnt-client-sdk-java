@@ -407,4 +407,4 @@ This SDK does **NOT**:
 
 ## 📝 License
 
-Copyright © 2025 Zequent Framework
+Licensed under the [Apache License, Version 2.0](LICENSE); see [NOTICE](NOTICE).
