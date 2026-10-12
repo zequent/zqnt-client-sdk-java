@@ -139,4 +139,18 @@ class LiveDataMapperTest {
         assertEquals("takeoff", mapped.getSkillExecutionEvent().getNodeId());
         assertEquals(42.5f, mapped.getSkillExecutionEvent().getProgress());
     }
+
+    /** The platform completes a start with nothing but the serial; the client must let it through. */
+    @Test
+    void aStartLiveStreamWithOnlyTheSerialIsMapped() {
+        var proto = LiveDataMapper.INSTANCE.toProtoStartLiveStreamRequest(
+                com.zqnt.sdk.client.livedata.domains.LiveDataStartLiveStreamRequest.builder()
+                        .sn("8UUXN7700A0DQQ").build());
+
+        assertEquals("8UUXN7700A0DQQ", proto.getBase().getSn());
+        assertFalse(proto.getBase().getTid().isEmpty(), "a tid is generated");
+        assertEquals("", proto.getRequest().getStreamServer());
+        assertEquals("", proto.getRequest().getVideoId());
+        assertEquals(com.zqnt.utils.common.proto.AssetTypeEnum.ASSET_TYPE_UNKNOWN, proto.getRequest().getAssetType());
+    }
 }

@@ -515,11 +515,14 @@ public class LiveDataMapper {
             return null;
         }
 
-        var requestBuilder = com.zqnt.utils.devicecontrol.proto.LiveStreamStartCommandPayload.newBuilder()
-                .setVideoId(request.getVideoId())
-                .setStreamServer(request.getStreamServer())
-                .setStreamType(request.getStreamType())
-                .setAssetType(request.getAssetType());
+        // Everything but the serial is optional: the platform fills in the push URL, its publish key
+        // and the device's video id when they are left out. Protobuf setters refuse null, so an
+        // omitted field used to end the call with a NullPointerException before it left the client.
+        var requestBuilder = com.zqnt.utils.devicecontrol.proto.LiveStreamStartCommandPayload.newBuilder();
+        if (request.getVideoId() != null) requestBuilder.setVideoId(request.getVideoId());
+        if (request.getStreamServer() != null) requestBuilder.setStreamServer(request.getStreamServer());
+        if (request.getStreamType() != null) requestBuilder.setStreamType(request.getStreamType());
+        if (request.getAssetType() != null) requestBuilder.setAssetType(request.getAssetType());
 
         return com.zqnt.utils.devicecontrol.proto.LiveStreamStartCommandRequest.newBuilder()
                 .setBase(requestBase(request.getSn(), null, true, false))
