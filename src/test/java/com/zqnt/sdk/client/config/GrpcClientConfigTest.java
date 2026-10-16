@@ -10,8 +10,6 @@ class GrpcClientConfigTest {
     void streamDefaultsAreSafeForLongLivedSubscriptions() {
         GrpcClientConfig config = GrpcClientConfig.builder().build();
 
-        assertEquals(300, config.getStreamInactivityTimeoutSeconds());
         assertEquals(35, config.getTelemetryHeartbeatTimeoutSeconds());
-        assertEquals(2, config.getLiveDataSchedulerThreads());
     }
 }

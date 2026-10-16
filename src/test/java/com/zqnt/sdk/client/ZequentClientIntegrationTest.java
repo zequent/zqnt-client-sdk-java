@@ -1,14 +1,11 @@
 package com.zqnt.sdk.client;
 
-import com.zqnt.sdk.client.livedata.domains.StreamHandle;
-import com.zqnt.sdk.client.livedata.domains.StreamTelemetryRequest;
+import com.zqnt.protos.capability.v3.CommandResult;
+import com.zqnt.sdk.client.commands.domains.CommandException;
 import com.zqnt.sdk.client.missionautonomy.domains.MissionResponse;
 import com.zqnt.sdk.client.missionautonomy.domains.TaskResponse;
-import com.zqnt.sdk.client.remotecontrol.domains.DockOperationRequest;
-import com.zqnt.sdk.client.remotecontrol.domains.LiveStreamSplitScreenRequest;
-import com.zqnt.sdk.client.remotecontrol.domains.RemoteControlResponse;
+import com.zqnt.sdk.client.telemetry.domains.TelemetryWatch;
 import com.zqnt.sdk.client.testdata.MissionNfzTestData;
-import com.zqnt.utils.devicecontrol.proto.LiveDataServiceCommand;
 import com.zqnt.utils.missionautonomy.domains.WaypointDTO;
 import com.zqnt.utils.missionautonomy.domains.config.WaypointTaskConfig;
 import lombok.extern.slf4j.Slf4j;
@@ -18,13 +15,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -103,35 +100,29 @@ class ZequentClientIntegrationTest {
 	@Test
 	void createsUsableServiceClients() {
 		assertTrue(client.isConnected());
-		assertNotNull(client.remoteControl());
+		assertNotNull(client.commands());
 		assertNotNull(client.missionAutonomy());
-		assertNotNull(client.liveData());
+		assertNotNull(client.telemetry());
 	}
 
 	@Test
 	void changesRemoteDebugMode() throws Exception {
-		RemoteControlResponse response = client.remoteControl().debugMode(
-				DockOperationRequest.builder()
-						.sn(TEST_ASSET_SN)
-						.value(true)
-						.build())
+		CommandResult result = client.commands()
+				.executeCommand(TEST_ASSET_SN, "asset.remote_debug", Map.of("enabled", true))
 				.get(15, TimeUnit.SECONDS);
 
-		assertValidCommandResponse(response);
+		assertEquals("asset.remote_debug", result.getCommandId());
+		assertFalse(result.getCommandExecutionId().isBlank());
 	}
 
 	@Test
 	void changesLiveStreamSplitScreenMode() throws Exception {
-		var request = LiveStreamSplitScreenRequest.builder()
-				.sn(TEST_ASSET_SN)
-				.enabled(SPLIT_SCREEN_ENABLED)
-				.build();
+		CommandResult result = client.commands()
+				.executeAndWait(TEST_ASSET_SN, "stream.split_screen", Map.of("enabled", SPLIT_SCREEN_ENABLED),
+						Duration.ofSeconds(30))
+				.get(35, TimeUnit.SECONDS);
 
-		RemoteControlResponse response = client.remoteControl()
-				.liveStreamSplitScreen(request)
-				.get(15, TimeUnit.SECONDS);
-
-		assertSuccessfulCommand(response);
+		assertFalse(result.getCommandExecutionId().isBlank());
 		log.info("Live stream split screen set to {} for {}", SPLIT_SCREEN_ENABLED, TEST_ASSET_SN);
 	}
 
@@ -204,71 +195,31 @@ class ZequentClientIntegrationTest {
 
 	@Test
 	void receivesTelemetryData() throws Exception {
-		CountDownLatch receivedFiveMessages = new CountDownLatch(5);
-		AtomicInteger receivedMessages = new AtomicInteger();
-		AtomicReference<Throwable> streamError = new AtomicReference<>();
+		CountDownLatch receivedFiveSamples = new CountDownLatch(5);
+		AtomicInteger receivedSamples = new AtomicInteger();
 
-		var request = new StreamTelemetryRequest(
-				TEST_ASSET_SN,
-				UUID.randomUUID().toString(),
-				100,
-				100,
-				LocalDateTime.now(),
-				LiveDataServiceCommand.LIVE_DATA_COMMAND_START_TELEMETRY_STREAM);
-
-		try (StreamHandle ignored = client.liveData().streamTelemetryData(request, response -> {
-			assertNotNull(response);
-			assertNotNull(response.getTid());
-			assertNotNull(response.getSn());
-			int count = receivedMessages.incrementAndGet();
-			log.info("Telemetry #{}: tid={}, sn={}, hasErrors={}",
-					count, response.getTid(), response.getSn(), response.isHasErrors());
-			receivedFiveMessages.countDown();
-		}, error -> {
-			streamError.compareAndSet(null, error);
-			while (receivedFiveMessages.getCount() > 0) {
-				receivedFiveMessages.countDown();
-			}
+		try (TelemetryWatch watch = client.telemetry().watchTelemetry(List.of(TEST_ASSET_SN), sample -> {
+			assertEquals(TEST_ASSET_SN, sample.getAsset().getSn());
+			receivedSamples.incrementAndGet();
+			receivedFiveSamples.countDown();
 		})) {
-			assertTrue(receivedFiveMessages.await(15, TimeUnit.SECONDS),
-					"Expected five telemetry messages within 15 seconds");
+			assertTrue(receivedFiveSamples.await(15, TimeUnit.SECONDS),
+					"Expected five telemetry samples within 15 seconds");
+			assertFalse(watch.done().isCompletedExceptionally());
 		}
 
-		assertNull(streamError.get(), () -> "Telemetry stream failed: " + streamError.get());
-		assertTrue(receivedMessages.get() >= 5,
-				() -> "Expected at least five telemetry messages, got " + receivedMessages.get());
+		assertTrue(receivedSamples.get() >= 5,
+				() -> "Expected at least five telemetry samples, got " + receivedSamples.get());
 	}
 
 	@Test
-	void returnsAStructuredErrorForUnknownAsset() throws Exception {
-		RemoteControlResponse response = client.remoteControl().debugMode(
-				DockOperationRequest.builder()
-						.sn("INVALID_SN_DOES_NOT_EXIST")
-						.value(true)
-						.build())
-				.get(15, TimeUnit.SECONDS);
+	void returnsAStructuredErrorForUnknownAsset() {
+		CompletionException failure = assertThrows(CompletionException.class, () -> client.commands()
+				.executeCommand("INVALID_SN_DOES_NOT_EXIST", "asset.remote_debug", Map.of("enabled", true))
+				.join());
 
-		assertNotNull(response);
-		assertFalse(response.isSuccess());
-		assertNotNull(response.getError());
-		assertNotNull(response.getError().getErrorCode());
-	}
-
-	private static void assertValidCommandResponse(RemoteControlResponse response) {
-		assertNotNull(response);
-		assertNotNull(response.getTid());
-		if (response.isSuccess()) {
-			assertEquals(TEST_ASSET_SN, response.getSn());
-		} else {
-			assertNotNull(response.getError());
-		}
-	}
-
-	private static void assertSuccessfulCommand(RemoteControlResponse response) {
-		assertValidCommandResponse(response);
-		assertTrue(response.isSuccess(), () -> response.getError() != null
-				? response.getError().getErrorCode() + ": " + response.getError().getErrorMessage()
-				: response.getMessage());
+		CommandException refused = assertInstanceOf(CommandException.class, failure.getCause());
+		assertNotNull(refused.getCode());
 	}
 
 	private static void assertSuccessfulMissionResponse(MissionResponse response) {

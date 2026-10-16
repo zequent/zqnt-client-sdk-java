@@ -1,5 +1,7 @@
 package com.zqnt.sdk.client;
 
+import com.zqnt.sdk.client.commands.application.Commands;
+import com.zqnt.sdk.client.commands.application.impl.CommandsImpl;
 import com.zqnt.sdk.client.config.GrpcClientConfig;
 import com.zqnt.sdk.client.config.ServiceConfig;
 import com.zqnt.sdk.client.config.ZequentEnvironment;
@@ -7,12 +9,10 @@ import com.zqnt.sdk.client.connector.application.Connector;
 import com.zqnt.sdk.client.connector.application.impl.ConnectorImpl;
 import com.zqnt.sdk.client.grpc.ChannelFactory;
 import com.zqnt.sdk.client.grpc.ClientCredentials;
-import com.zqnt.sdk.client.livedata.application.LiveData;
-import com.zqnt.sdk.client.livedata.application.impl.LiveDataImpl;
 import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
 import com.zqnt.sdk.client.missionautonomy.application.impl.MissionAutonomyImpl;
-import com.zqnt.sdk.client.remotecontrol.application.RemoteControl;
-import com.zqnt.sdk.client.remotecontrol.application.impl.RemoteControlImpl;
+import com.zqnt.sdk.client.telemetry.application.Telemetry;
+import com.zqnt.sdk.client.telemetry.application.impl.TelemetryImpl;
 
 import io.grpc.ManagedChannel;
 import lombok.extern.slf4j.Slf4j;
@@ -33,10 +33,10 @@ import java.util.concurrent.TimeUnit;
 public class ZequentClient implements AutoCloseable {
 
     private final GrpcClientConfig config;
-    private final RemoteControl remoteControl;
     private final MissionAutonomy missionAutonomy;
-    private final LiveData liveData;
     private final Connector connector;
+    private final Commands commands;
+    private final Telemetry telemetry;
     private final List<ManagedChannel> channels;
 
 
@@ -46,14 +46,13 @@ public class ZequentClient implements AutoCloseable {
      *
      * Note: This constructor is called by ZequentClientProducer, NOT by CDI directly.
      */
-    ZequentClient(GrpcClientConfig config, RemoteControl remoteControl,
-                  MissionAutonomy missionAutonomy, LiveData liveData, Connector connector,
-                  List<ManagedChannel> channels) {
+    ZequentClient(GrpcClientConfig config, MissionAutonomy missionAutonomy, Connector connector,
+                  Commands commands, Telemetry telemetry, List<ManagedChannel> channels) {
         this.config = config;
-        this.remoteControl = remoteControl;
         this.missionAutonomy = missionAutonomy;
-        this.liveData = liveData;
         this.connector = connector;
+        this.commands = commands;
+        this.telemetry = telemetry;
         this.channels = channels;
         log.info("ZequentClient initialized with {} channels", channels.size());
     }
@@ -83,12 +82,18 @@ public class ZequentClient implements AutoCloseable {
     }
 
     /**
-     * Access remote control operations for drones and docks.
-     *
-     * @return RemoteControl interface for flight operations, manual control, and dock operations
+     * Command any asset by id: {@code listCapabilities(asset)} and
+     * {@code executeCommand(asset, commandId, params)}, plus command events, cancel and manual control.
      */
-    public RemoteControl remoteControl() {
-        return remoteControl;
+    public Commands commands() {
+        return commands;
+    }
+
+    /**
+     * Live data of assets: telemetry samples and source status, detections and alerts.
+     */
+    public Telemetry telemetry() {
+        return telemetry;
     }
 
     /**
@@ -98,15 +103,6 @@ public class ZequentClient implements AutoCloseable {
      */
     public MissionAutonomy missionAutonomy() {
         return missionAutonomy;
-    }
-
-    /**
-     * Access live telemetry data streaming.
-     *
-     * @return LiveData interface for streaming telemetry data
-     */
-    public LiveData liveData() {
-        return liveData;
     }
 
     /** Access all Connector service endpoints. */
@@ -134,14 +130,8 @@ public class ZequentClient implements AutoCloseable {
         log.info("Shutting down ZequentClient with {} channels", channels.size());
 
         // Shutdown service implementations first
-        if (remoteControl instanceof RemoteControlImpl) {
-            ((RemoteControlImpl) remoteControl).shutdown();
-        }
         if (missionAutonomy instanceof MissionAutonomyImpl) {
             ((MissionAutonomyImpl) missionAutonomy).shutdown();
-        }
-        if (liveData instanceof LiveDataImpl) {
-            ((LiveDataImpl) liveData).shutdown();
         }
         if (connector instanceof ConnectorImpl) {
             ((ConnectorImpl) connector).shutdown();
@@ -175,9 +165,7 @@ public class ZequentClient implements AutoCloseable {
         private long circuitBreakerWaitDurationMillis = 30000;
         private int connectionTimeoutSeconds = 30;
         private int requestTimeoutSeconds = 60;
-        private int streamInactivityTimeoutSeconds = 5 * 60;
         private int telemetryHeartbeatTimeoutSeconds = 35;
-        private int liveDataSchedulerThreads = 2;
         private ServiceConfig.LoadBalancerType defaultLoadBalancerType = ServiceConfig.LoadBalancerType.ROUND_ROBIN;
         private String clientToken;
         private final List<io.grpc.ClientInterceptor> interceptors = new ArrayList<>();
@@ -219,18 +207,8 @@ public class ZequentClient implements AutoCloseable {
             return this;
         }
 
-        public ZequentClientBuilder streamInactivityTimeoutSeconds(int timeout) {
-            this.streamInactivityTimeoutSeconds = timeout;
-            return this;
-        }
-
         public ZequentClientBuilder telemetryHeartbeatTimeoutSeconds(int timeout) {
             this.telemetryHeartbeatTimeoutSeconds = timeout;
-            return this;
-        }
-
-        public ZequentClientBuilder liveDataSchedulerThreads(int threads) {
-            this.liveDataSchedulerThreads = threads;
             return this;
         }
 
@@ -321,9 +299,7 @@ public class ZequentClient implements AutoCloseable {
                     .circuitBreakerWaitDurationMillis(circuitBreakerWaitDurationMillis)
                     .connectionTimeoutSeconds(connectionTimeoutSeconds)
                     .requestTimeoutSeconds(requestTimeoutSeconds)
-                    .streamInactivityTimeoutSeconds(streamInactivityTimeoutSeconds)
                     .telemetryHeartbeatTimeoutSeconds(telemetryHeartbeatTimeoutSeconds)
-                    .liveDataSchedulerThreads(liveDataSchedulerThreads)
                     .defaultLoadBalancerType(defaultLoadBalancerType)
                     .clientToken(ClientCredentials.resolve(clientToken != null && !clientToken.isBlank() || environment == null
                             ? clientToken : environment.apply(ClientCredentials.ENV_VAR)))
@@ -346,12 +322,12 @@ public class ZequentClient implements AutoCloseable {
             channels.add(connectorChannel);
 
             // Create service implementations with their own channels
-            RemoteControl remoteControl = RemoteControlImpl.create(globalConfig, remoteControlChannel);
             MissionAutonomy missionAutonomy = MissionAutonomyImpl.create(globalConfig, missionAutonomyChannel);
-            LiveData liveData = LiveDataImpl.create(globalConfig, liveDataChannel);
             Connector connector = ConnectorImpl.create(globalConfig, connectorChannel);
+            Commands commands = CommandsImpl.create(globalConfig, remoteControlChannel);
+            Telemetry telemetry = TelemetryImpl.create(globalConfig, liveDataChannel);
 
-            return new ZequentClient(globalConfig, remoteControl, missionAutonomy, liveData, connector, channels);
+            return new ZequentClient(globalConfig, missionAutonomy, connector, commands, telemetry, channels);
         }
 
         private ServiceConfig buildServiceConfig(ServiceConfigBuilder builder, String serviceName, String envPrefix) {

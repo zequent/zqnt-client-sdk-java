@@ -2,9 +2,7 @@ package com.zqnt.sdk.client;
 
 import com.zqnt.sdk.client.config.ServiceConfig;
 import com.zqnt.sdk.client.connector.application.Connector;
-import com.zqnt.sdk.client.livedata.application.LiveData;
 import com.zqnt.sdk.client.missionautonomy.application.MissionAutonomy;
-import com.zqnt.sdk.client.remotecontrol.application.RemoteControl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -68,10 +66,9 @@ class ZequentClientTest {
 	}
 
 	@Test
-	void testRemoteControlService() {
-		// RemoteControl Service sollte verfügbar sein
-		RemoteControl remoteControl = client.remoteControl();
-		assertNotNull(remoteControl, "RemoteControl sollte nicht null sein");
+	void testCommandsAndTelemetry() {
+		assertNotNull(client.commands());
+		assertNotNull(client.telemetry());
 	}
 
 	@Test
@@ -79,13 +76,6 @@ class ZequentClientTest {
 		// MissionAutonomy Service sollte verfügbar sein
 		MissionAutonomy missionAutonomy = client.missionAutonomy();
 		assertNotNull(missionAutonomy, "MissionAutonomy sollte nicht null sein");
-	}
-
-	@Test
-	void testLiveDataService() {
-		// LiveData Service sollte verfügbar sein
-		LiveData liveData = client.liveData();
-		assertNotNull(liveData, "LiveData sollte nicht null sein");
 	}
 
 	@Test
@@ -102,8 +92,6 @@ class ZequentClientTest {
 		assertEquals(1000, client.getConfig().getRetryDelayMillis());
 		assertEquals(10, client.getConfig().getConnectionTimeoutSeconds());
 		assertEquals(30, client.getConfig().getRequestTimeoutSeconds());
-		assertEquals(300, client.getConfig().getStreamInactivityTimeoutSeconds());
-		assertEquals(2, client.getConfig().getLiveDataSchedulerThreads());
 	}
 
 	@Test
@@ -165,9 +153,9 @@ class ZequentClientTest {
 		ZequentClient minimalClient = ZequentClient.builder().build();
 
 		assertNotNull(minimalClient);
-		assertNotNull(minimalClient.remoteControl());
+		assertNotNull(minimalClient.commands());
+		assertNotNull(minimalClient.telemetry());
 		assertNotNull(minimalClient.missionAutonomy());
-		assertNotNull(minimalClient.liveData());
 		assertNotNull(minimalClient.connector());
 
 		minimalClient.close();

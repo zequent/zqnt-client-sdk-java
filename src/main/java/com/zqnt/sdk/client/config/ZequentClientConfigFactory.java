@@ -58,9 +58,7 @@ public class ZequentClientConfigFactory {
                 .circuitBreakerWaitDurationMillis(resilience.circuitBreakerWaitDurationMillis())
                 .connectionTimeoutSeconds(resilience.connectionTimeoutSeconds())
                 .requestTimeoutSeconds(resilience.requestTimeoutSeconds())
-                .streamInactivityTimeoutSeconds(resilience.streamInactivityTimeoutSeconds())
                 .telemetryHeartbeatTimeoutSeconds(resilience.telemetryHeartbeatTimeoutSeconds())
-                .liveDataSchedulerThreads(resilience.liveDataSchedulerThreads())
                 .defaultLoadBalancerType(ServiceConfig.LoadBalancerType.ROUND_ROBIN)
                 .clientToken(com.zqnt.sdk.client.grpc.ClientCredentials.resolve(
                         properties.clientToken().orElse(null)))

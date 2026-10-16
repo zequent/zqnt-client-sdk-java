@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.zqnt.sdk</groupId>
     <artifactId>client-java-sdk</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>3.0.0-SNAPSHOT</version>
     <name>Zequent Java Client SDK</name>
     <description>A framework-agnostic Java client SDK for Zequent's gRPC services, designed for easy integration with any Java application.</description>
     <url>https://github.com/zequent/zqnt-client-sdk-java</url>
@@ -49,8 +49,8 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- jackson 2.x arrives transitively through zqnt-utils-java (2.18.9 at the pinned
-                 preview); pinned here for CVE-2026-68497 until the next utils preview is picked up. 2.21.x, not
+            <!-- jackson 2.x arrives transitively through zqnt-api-java (2.18.11 at the pinned
+                 preview); pinned here for CVE-2026-68497. 2.21.x, not
                  2.18.x: the optional Stork Kubernetes provider already brings jackson-core/yaml 2.21. -->
             <dependency>
                 <groupId>com.fasterxml.jackson</groupId>
@@ -71,9 +71,9 @@
     <!-- GitHub Packages Repository -->
     <repositories>
         <repository>
-            <id>zqnt-utils-repo</id>
+            <id>zqnt-api-repo</id>
             <name>GitHub Packages</name>
-            <url>https://maven.pkg.github.com/Zequent/zqnt-utils-java</url>
+            <url>https://maven.pkg.github.com/Zequent/zqnt-api-java</url>
             <releases>
                 <enabled>true</enabled>
             </releases>
@@ -158,17 +158,11 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Zequent Framework Utils (internal dependency - optional for public). Pinned to the
-             real, published 2.0.0 release (not the floating 1.0.0-SNAPSHOT this used to
-             reference): a SNAPSHOT resolves to whatever was most recently deployed/installed
-             locally at build time, which is not reproducible. See zqnt-protos' README
-             "Versioning" section for the platform-wide convention this now follows. -->
         <dependency>
             <groupId>com.zqnt</groupId>
-            <artifactId>zqnt-utils-java</artifactId>
-            <!-- zqnt-utils-java's 2.0.0 line, current preview (its PR #6): the released 2.0.0 predates
-                 the 2.0 contract this SDK speaks (e.g. CoordinateCommandRequest.no_fly_zone_override). -->
-            <version>2.0.0</version>
+            <artifactId>zqnt-api-java</artifactId>
+            <!-- preview (zequent/zqnt-api-java#1); the release version once it is tagged -->
+            <version>3.0.0-PR1-c9a26b2-SNAPSHOT</version>
         </dependency>
         <!-- Test dependencies (framework-agnostic) -->
         <dependency>

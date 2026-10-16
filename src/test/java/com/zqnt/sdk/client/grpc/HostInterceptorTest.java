@@ -1,16 +1,17 @@
 package com.zqnt.sdk.client.grpc;
 
 import com.zqnt.sdk.client.ZequentClient;
-import com.zqnt.sdk.client.livedata.domains.StreamHandle;
-import com.zqnt.sdk.client.livedata.domains.StreamTelemetryRequest;
+import com.zqnt.protos.capability.v3.CapabilitySet;
+import com.zqnt.protos.control.v3.GetCapabilitiesRequest;
+import com.zqnt.protos.control.v3.GetCapabilitiesResponse;
+import com.zqnt.protos.control.v3.RemoteControlServiceGrpc;
+import com.zqnt.protos.telemetry.v3.TelemetryServiceGrpc;
+import com.zqnt.protos.telemetry.v3.WatchTelemetryRequest;
+import com.zqnt.protos.telemetry.v3.WatchTelemetryResponse;
+import com.zqnt.sdk.client.telemetry.domains.TelemetryWatch;
 import com.zqnt.utils.connector.proto.ConnectorServiceGrpc;
 import com.zqnt.utils.connector.proto.ListSkillContractsRequest;
 import com.zqnt.utils.connector.proto.SkillContractListResponse;
-import com.zqnt.utils.devicecontrol.proto.AssetCapabilitiesRequest;
-import com.zqnt.utils.devicecontrol.proto.AssetCapabilitiesResponse;
-import com.zqnt.utils.livedata.proto.LiveDataServiceGrpc;
-import com.zqnt.utils.livedata.proto.LiveDataTelemetryResponse;
-import com.zqnt.utils.remotecontrol.proto.RemoteControlServiceGrpc;
 import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
@@ -84,22 +85,22 @@ class HostInterceptorTest {
         };
         var remoteControl = new RemoteControlServiceGrpc.RemoteControlServiceImplBase() {
             @Override
-            public void getCapabilities(AssetCapabilitiesRequest request, StreamObserver<AssetCapabilitiesResponse> observer) {
-                observer.onNext(AssetCapabilitiesResponse.newBuilder().build());
+            public void getCapabilities(GetCapabilitiesRequest request, StreamObserver<GetCapabilitiesResponse> observer) {
+                observer.onNext(GetCapabilitiesResponse.newBuilder()
+                        .setCapabilities(CapabilitySet.newBuilder().setAssetSn(request.getAsset().getSn())).build());
                 observer.onCompleted();
             }
         };
-        var liveData = new LiveDataServiceGrpc.LiveDataServiceImplBase() {
+        var telemetry = new TelemetryServiceGrpc.TelemetryServiceImplBase() {
             @Override
-            public void streamTelemetry(com.zqnt.utils.livedata.proto.StreamTelemetryRequest request,
-                                        StreamObserver<LiveDataTelemetryResponse> observer) {
-                streamOpened.countDown(); // held open, like a real telemetry stream
+            public void watchTelemetry(WatchTelemetryRequest request, StreamObserver<WatchTelemetryResponse> observer) {
+                streamOpened.countDown();
             }
         };
         server = ServerBuilder.forPort(0)
                 .addService(ServerInterceptors.intercept(connector, recorder))
                 .addService(ServerInterceptors.intercept(remoteControl, recorder))
-                .addService(ServerInterceptors.intercept(liveData, recorder))
+                .addService(ServerInterceptors.intercept(telemetry, recorder))
                 .build().start();
     }
 
@@ -142,17 +143,16 @@ class HostInterceptorTest {
     void theHostInterceptorReachesUnaryAndStreamingCallsOfEveryService() throws Exception {
         AtomicReference<String> current = new AtomicReference<>("user-token");
         try (ZequentClient client = client(null, bearer(current::get))) {
-            client.remoteControl().getCapabilities("SN-1").get(10, TimeUnit.SECONDS);
+            client.commands().listCapabilities("SN-1").get(10, TimeUnit.SECONDS);
             current.set("service-token");
             client.connector().listSkillContracts(null, null).get(10, TimeUnit.SECONDS);
-            StreamHandle stream = client.liveData().streamTelemetryData(
-                    StreamTelemetryRequest.builder().sn("SN-1").tid("t-1").frequencyMs(1000).build(), ignored -> { }, ignored -> { });
+            TelemetryWatch watch = client.telemetry().watchTelemetry(List.of("SN-1"), ignored -> { });
             assertTrue(streamOpened.await(10, TimeUnit.SECONDS), "telemetry stream reached the server");
-            stream.stop();
+            watch.close();
         }
         assertEquals(List.of("Bearer user-token"), seen.get("GetCapabilities"));
         assertEquals(List.of("Bearer service-token"), seen.get("ListSkillContracts"));
-        assertEquals("Bearer service-token", seen.get("StreamTelemetry").get(0));
+        assertEquals("Bearer service-token", seen.get("WatchTelemetry").get(0));
     }
 
     @Test
